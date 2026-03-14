@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Package, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Shuffle, TrendingUp, PackageX } from 'lucide-react'
+import { Package, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Shuffle, TrendingUp, PackageX, X, Bell, BellRing } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { KpiCard }    from '@/components/inventory/KpiCard'
 import { StatusBadge} from '@/components/inventory/StatusBadge'
@@ -23,6 +23,9 @@ export default function DashboardPage() {
   const [kpis, setKpis] = useState<KPIs>({ totalProducts:0, lowStock:0, outOfStock:0, pendingReceipts:0, pendingDeliveries:0, scheduledTransfers:0 })
   const [activity, setActivity] = useState<Activity[]>([])
   const [fetching, setFetching] = useState(false)
+  const [dismissed, setDismissed] = useState({ low: false, out: false })
+  const [showAlerts, setShowAlerts] = useState(false)
+  const totalAlerts = kpis.lowStock + kpis.outOfStock
 
   useEffect(() => { if (!loading && !user) router.push('/login') }, [user, loading, router])
 
@@ -82,7 +85,74 @@ export default function DashboardPage() {
       <PageHeader
         title="Dashboard"
         subtitle={isManager ? 'Manager overview — all inventory operations at a glance.' : 'Your inventory snapshot.'}
+        action={
+          <div className="relative">
+            <button 
+              onClick={() => setShowAlerts(!showAlerts)}
+              className={`p-3 rounded-2xl transition-all relative group ${
+                showAlerts 
+                  ? 'bg-[var(--primary)] text-white shadow-lg shadow-[var(--primary)]/25' 
+                  : 'bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--muted)] border border-[var(--border)]'
+              }`}
+            >
+              {totalAlerts > 0 ? (
+                <BellRing className={`w-6 h-6 ${showAlerts ? 'animate-bounce' : ''}`} />
+              ) : (
+                <Bell className="w-6 h-6" />
+              )}
+              
+              {totalAlerts > 0 && (
+                <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 border-2 border-[var(--background)] rounded-full group-hover:scale-125 transition-transform" />
+              )}
+            </button>
+          </div>
+        }
       />
+
+      {/* Stock Alerts Panel - Toggled by Bell */}
+      <div className={`fixed top-24 right-8 z-[100] flex flex-col gap-4 w-96 max-w-[calc(100vw-4rem)] pointer-events-none transition-all duration-500 ease-in-out ${
+        showAlerts ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0'
+      }`}>
+        {kpis.outOfStock > 0 && !dismissed.out && (
+          <div className="pointer-events-auto bg-[var(--card)] border-l-4 border-l-[var(--destructive)] p-4 rounded-2xl shadow-2xl flex items-start gap-3 backdrop-blur-md animate-in slide-in-from-right">
+            <div className="w-10 h-10 rounded-full bg-[var(--destructive)]/10 flex items-center justify-center shrink-0">
+              <PackageX className="w-5 h-5 text-[var(--destructive)]" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-[var(--foreground)]">Critical: Out of Stock</h3>
+              <p className="text-xs text-[var(--muted-foreground)] mt-0.5 leading-relaxed">
+                <span className="font-bold text-[var(--destructive)]">{kpis.outOfStock} items</span> are currently unavailable. Stock counts are 0.
+              </p>
+            </div>
+            <button 
+              onClick={() => setDismissed(prev => ({ ...prev, out: true }))}
+              className="p-1 hover:bg-[var(--muted)] rounded-lg transition-colors text-[var(--muted-foreground)]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {kpis.lowStock > 0 && !dismissed.low && (
+          <div className="pointer-events-auto bg-[var(--card)] border-l-4 border-l-amber-500 p-4 rounded-2xl shadow-2xl flex items-start gap-3 backdrop-blur-md animate-in slide-in-from-right">
+            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-[var(--foreground)]">Low Stock Warning</h3>
+              <p className="text-xs text-[var(--muted-foreground)] mt-0.5 leading-relaxed">
+                <span className="font-bold text-amber-600">{kpis.lowStock} products</span> have dropped below their reorder threshold.
+              </p>
+            </div>
+            <button 
+              onClick={() => setDismissed(prev => ({ ...prev, low: true }))}
+              className="p-1 hover:bg-[var(--muted)] rounded-lg transition-colors text-[var(--muted-foreground)]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-10">
