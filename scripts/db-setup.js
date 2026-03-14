@@ -223,11 +223,6 @@ async function setup() {
     console.log(`   Database: ${process.env.DB_NAME || 'hackbase'}`)
     console.log('')
 
-    // Phase A: Add role column to existing users table (safe if already exists)
-    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'staff'`)
-    await client.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`)
-    await client.query(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('manager', 'staff'))`)
-
     // Phase B: Main schema
     await client.query(SQL)
 

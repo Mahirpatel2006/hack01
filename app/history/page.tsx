@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import React from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowDownToLine, ArrowUpFromLine, Shuffle, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -8,7 +9,7 @@ import { PageHeader } from '@/components/inventory/PageHeader'
 
 interface Move { id:number; move_type:string; ref_id:number; delta:number; created_at:string; product:{id:number;name:string;sku:string}; warehouse:{id:number;name:string} }
 
-const TYPE_ICON: Record<string, JSX.Element> = {
+const TYPE_ICON: Record<string, React.ReactElement> = {
   receipt:      <ArrowDownToLine className="w-3.5 h-3.5"/>,
   delivery:     <ArrowUpFromLine className="w-3.5 h-3.5"/>,
   transfer_out: <Shuffle className="w-3.5 h-3.5"/>,

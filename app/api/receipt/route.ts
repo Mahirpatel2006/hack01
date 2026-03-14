@@ -1,63 +1,95 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getSession } from '@/lib/session'
 import { queryRows, withTransaction } from '@/lib/db'
+import { logger } from '@/lib/logger'
+import { handleRouteError, Errors } from '@/lib/errors'
+
+interface ReceiptItemRow { id: number; product_id: number; quantity: number; received_qty: number }
+interface ReceiptRow { id: number; status: string; warehouse_id: number; items: ReceiptItemRow[] | null }
 
 const RECEIPT_WITH_JOINS = `
-  SELECT r.id, r.supplier, r.status, r.receipt_date, r.created_at,
+  SELECT r.id, r.supplier, r.status, r.receipt_date, r.created_at, r.updated_at,
          w.id AS warehouse_id, w.name AS warehouse_name,
          COALESCE(json_agg(json_build_object(
            'id',           ri.id,
            'product_id',   ri.product_id,
            'quantity',     ri.quantity,
            'received_qty', ri.received_qty,
-           'product',      json_build_object('id', p.id, 'name', p.name, 'sku', p.sku,
-                             'category', json_build_object('id', c.id, 'name', c.name))
+           'product',      json_build_object('id', p.id, 'name', p.name, 'sku', p.sku)
          )) FILTER (WHERE ri.id IS NOT NULL), '[]') AS items
   FROM receipts r
-  JOIN warehouses w ON w.id = r.warehouse_id
+  JOIN warehouses w        ON w.id = r.warehouse_id
   LEFT JOIN receipt_items ri ON ri.receipt_id = r.id
   LEFT JOIN products p       ON p.id = ri.product_id
-  LEFT JOIN categories c     ON c.id = p.category_id
 `
 
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    if (!session) throw Errors.unauthorized()
 
-    const status = new URL(req.url).searchParams.get('status')
-    const where  = status ? `WHERE r.status = $1` : ''
-    const params = status ? [status] : []
+    const { searchParams } = new URL(req.url)
+    const status = searchParams.get('status')
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'))
+    const limit = Math.min(100, parseInt(searchParams.get('limit') ?? '25'))
+    const offset = (page - 1) * limit
+    const warehouseId = searchParams.get('warehouseId')
 
-    const { rows } = await queryRows(
-      `${RECEIPT_WITH_JOINS} ${where} GROUP BY r.id, w.id ORDER BY r.created_at DESC`,
-      params
+    const conditions: string[] = []
+    const params: (string | number)[] = []
+    let i = 1
+
+    if (status) { conditions.push(`r.status = $${i++}`); params.push(status) }
+    if (warehouseId) { conditions.push(`r.warehouse_id = $${i++}`); params.push(Number(warehouseId)) }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+
+    const { rows: countRows } = await queryRows<{ total: string }>(
+      `SELECT COUNT(DISTINCT r.id) AS total FROM receipts r ${where}`, [...params]
     )
+    const total = parseInt(countRows[0]?.total ?? '0')
+
+    const dataParams = [...params, limit, offset]
+    const { rows } = await queryRows(
+      `${RECEIPT_WITH_JOINS} ${where}
+       GROUP BY r.id, w.id
+       ORDER BY r.created_at DESC
+       LIMIT $${i++} OFFSET $${i++}`,
+      dataParams
+    )
+
     const receipts = rows.map(r => ({
-      ...r, warehouse: { id: r.warehouse_id, name: r.warehouse_name }
+      ...r,
+      warehouse: { id: r.warehouse_id, name: r.warehouse_name },
     }))
-    return NextResponse.json({ receipts })
+
+    return NextResponse.json({ receipts, total, page, limit, pages: Math.ceil(total / limit) })
   } catch (err) {
-    console.error('[receipt GET]', err)
-    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 })
+    return handleRouteError(err, 'receipt GET')
   }
 }
 
 export async function POST(req: Request) {
   try {
     const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    if (!session) throw Errors.unauthorized()
 
     const { supplier, warehouseId, receiptDate, items } = await req.json()
-    if (!supplier?.trim() || !warehouseId || !items?.length) {
-      return NextResponse.json({ error: 'Supplier, warehouse, and at least one item are required.' }, { status: 400 })
+    if (!supplier?.trim()) throw Errors.badRequest('Supplier name is required.')
+    if (!warehouseId) throw Errors.badRequest('Warehouse is required.')
+    if (!items?.length) throw Errors.badRequest('At least one item is required.')
+
+    for (const item of items) {
+      if (!item.productId) throw Errors.badRequest('Each item must have a productId.')
+      if (!Number(item.quantity) || Number(item.quantity) <= 0)
+        throw Errors.badRequest('Each item must have a positive quantity.')
     }
 
     const receipt = await withTransaction(async (client) => {
       const { rows: [r] } = await client.query(
-        `INSERT INTO receipts (supplier, warehouse_id, receipt_date, status)
-         VALUES ($1, $2, $3, 'draft') RETURNING *`,
-        [supplier.trim(), Number(warehouseId), receiptDate ? new Date(receiptDate) : new Date()]
+        `INSERT INTO receipts (supplier, warehouse_id, receipt_date, status, created_by)
+         VALUES ($1, $2, $3, 'draft', $4) RETURNING *`,
+        [supplier.trim(), Number(warehouseId), receiptDate ?? new Date().toISOString().split('T')[0], session.sub]
       )
       for (const item of items) {
         await client.query(
@@ -69,65 +101,68 @@ export async function POST(req: Request) {
       return r
     })
 
+    logger.info('receipt POST', `Receipt #${receipt.id} created by ${session.sub}`)
     return NextResponse.json({ message: 'Receipt created.', receipt }, { status: 201 })
   } catch (err) {
-    console.error('[receipt POST]', err)
-    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 })
+    return handleRouteError(err, 'receipt POST')
   }
 }
 
 export async function PATCH(req: Request) {
   try {
     const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    if (!session) throw Errors.unauthorized()
 
     const { receiptId, status, items } = await req.json()
-    if (!receiptId) return NextResponse.json({ error: 'Receipt ID required.' }, { status: 400 })
+    if (!receiptId) throw Errors.badRequest('Receipt ID is required.')
 
-    // Fetch receipt + items
-    const { rows: [receipt] } = await queryRows(
-      `SELECT r.*, json_agg(json_build_object('id', ri.id, 'product_id', ri.product_id, 'quantity', ri.quantity))
-         AS items FROM receipts r LEFT JOIN receipt_items ri ON ri.receipt_id = r.id WHERE r.id = $1 GROUP BY r.id`,
+    const { rows: [receipt] } = await queryRows<ReceiptRow>(
+      `SELECT r.id, r.status, r.warehouse_id,
+         json_agg(json_build_object(
+           'id', ri.id, 'product_id', ri.product_id, 'quantity', ri.quantity, 'received_qty', ri.received_qty
+         )) FILTER (WHERE ri.id IS NOT NULL) AS items
+         FROM receipts r LEFT JOIN receipt_items ri ON ri.receipt_id = r.id
+         WHERE r.id = $1 GROUP BY r.id`,
       [Number(receiptId)]
     )
-    if (!receipt) return NextResponse.json({ error: 'Receipt not found.' }, { status: 404 })
-    if (receipt.status === 'validated') return NextResponse.json({ error: 'Receipt already validated.' }, { status: 400 })
+
+    if (!receipt) throw Errors.notFound('Receipt not found.')
+    if (receipt.status === 'validated') throw Errors.badRequest('Receipt is already validated.')
 
     if (status === 'validated') {
-      if (!items?.length) return NextResponse.json({ error: 'Items required for validation.' }, { status: 400 })
+      if (!items?.length) throw Errors.badRequest('Received quantities are required for validation.')
 
       await withTransaction(async (client) => {
         for (const item of items) {
-          const riRow   = receipt.items.find((ri: { id: number }) => ri.id === item.receiptItemId)
+          const riRow = (receipt.items ?? []).find((ri: { id: number }) => ri.id === item.receiptItemId)
           if (!riRow) throw new Error(`Receipt item ${item.receiptItemId} not found`)
+
           const recvQty = Number(item.receivedQty)
-          if (recvQty < 0 || recvQty > riRow.quantity) throw new Error(`Invalid quantity for item ${item.receiptItemId}`)
+          if (recvQty < 0) throw new Error(`Quantity cannot be negative for item ${item.receiptItemId}`)
+          if (recvQty > riRow.quantity) throw new Error(`Received qty exceeds ordered qty for item ${item.receiptItemId}`)
 
           await client.query(`UPDATE receipt_items SET received_qty = $1 WHERE id = $2`, [recvQty, item.receiptItemId])
 
           if (recvQty > 0) {
-            await client.query(`
-              INSERT INTO stocks (product_id, warehouse_id, quantity)
-              VALUES ($1, $2, $3)
-              ON CONFLICT (product_id, warehouse_id)
-              DO UPDATE SET quantity = stocks.quantity + $3`,
+            await client.query(
+              `INSERT INTO stocks (product_id, warehouse_id, quantity) VALUES ($1, $2, $3)
+               ON CONFLICT (product_id, warehouse_id) DO UPDATE SET quantity = stocks.quantity + $3`,
               [riRow.product_id, receipt.warehouse_id, recvQty]
             )
-            await client.query(`
-              INSERT INTO stock_moves (move_type, ref_id, product_id, warehouse_id, delta)
-              VALUES ('receipt', $1, $2, $3, $4)`,
+            await client.query(
+              `INSERT INTO stock_moves (move_type, ref_id, product_id, warehouse_id, delta, note)
+               VALUES ('receipt', $1, $2, $3, $4, NULL)`,
               [receipt.id, riRow.product_id, receipt.warehouse_id, recvQty]
             )
           }
         }
         await client.query(`UPDATE receipts SET status = 'validated' WHERE id = $1`, [receipt.id])
       })
+      logger.info('receipt PATCH', `Receipt #${receiptId} validated by ${session.sub}`)
     }
 
     return NextResponse.json({ message: 'Receipt updated.' })
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Internal server error.'
-    console.error('[receipt PATCH]', err)
-    return NextResponse.json({ error: msg }, { status: 400 })
+  } catch (err) {
+    return handleRouteError(err, 'receipt PATCH')
   }
 }

@@ -1,9 +1,20 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getSession } from '@/lib/session'
 import { queryRows, withTransaction } from '@/lib/db'
+import { logger } from '@/lib/logger'
+
+interface TransferItemRow {
+  id: number
+  transfer_id: number
+  product_id: number
+  quantity: number
+  transferred_qty: number
+}
+
+import { handleRouteError, Errors } from '@/lib/errors'
 
 const TRANSFER_WITH_JOINS = `
-  SELECT t.id, t.status, t.created_at,
+  SELECT t.id, t.status, t.created_at, t.updated_at,
          fw.id AS from_id, fw.name AS from_name,
          tw.id AS to_id,   tw.name AS to_name,
          COALESCE(json_agg(json_build_object(
@@ -23,44 +34,66 @@ const TRANSFER_WITH_JOINS = `
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    if (!session) throw Errors.unauthorized()
 
-    const status = new URL(req.url).searchParams.get('status')
+    const { searchParams } = new URL(req.url)
+    const status = searchParams.get('status')
+    const page   = Math.max(1, parseInt(searchParams.get('page')  ?? '1'))
+    const limit  = Math.min(100, parseInt(searchParams.get('limit') ?? '25'))
+    const offset = (page - 1) * limit
+
     const where  = status ? `WHERE t.status = $1` : ''
-    const { rows } = await queryRows(
-      `${TRANSFER_WITH_JOINS} ${where} GROUP BY t.id, fw.id, tw.id ORDER BY t.created_at DESC`,
-      status ? [status] : []
+    const params = status ? [status] : []
+
+    const { rows: countRows } = await queryRows<{ total: string }>(
+      `SELECT COUNT(DISTINCT t.id) AS total FROM transfers t ${where}`, params
     )
+    const total = parseInt(countRows[0]?.total ?? '0')
+
+    const iStart = status ? 2 : 1
+    const dataParams = status ? [status, limit, offset] : [limit, offset]
+    const { rows } = await queryRows(
+      `${TRANSFER_WITH_JOINS} ${where}
+       GROUP BY t.id, fw.id, tw.id
+       ORDER BY t.created_at DESC
+       LIMIT $${iStart} OFFSET $${iStart + 1}`,
+      dataParams
+    )
+
     const transfers = rows.map(r => ({
       ...r,
       fromWarehouse: { id: r.from_id, name: r.from_name },
       toWarehouse:   { id: r.to_id,   name: r.to_name   },
     }))
-    return NextResponse.json({ transfers })
+
+    return NextResponse.json({ transfers, total, page, limit, pages: Math.ceil(total / limit) })
   } catch (err) {
-    console.error('[transfer GET]', err)
-    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 })
+    return handleRouteError(err, 'transfer GET')
   }
 }
 
 export async function POST(req: Request) {
   try {
     const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    if (!session) throw Errors.unauthorized()
 
     const { fromWarehouseId, toWarehouseId, items } = await req.json()
-    if (!fromWarehouseId || !toWarehouseId || !items?.length) {
-      return NextResponse.json({ error: 'Both warehouses and at least one item required.' }, { status: 400 })
-    }
-    if (Number(fromWarehouseId) === Number(toWarehouseId)) {
-      return NextResponse.json({ error: 'Source and destination warehouses must be different.' }, { status: 400 })
+    if (!fromWarehouseId || !toWarehouseId) throw Errors.badRequest('Both warehouses are required.')
+    if (!items?.length)                     throw Errors.badRequest('At least one item is required.')
+    if (Number(fromWarehouseId) === Number(toWarehouseId))
+      throw Errors.badRequest('Source and destination warehouses must be different.')
+
+    for (const item of items) {
+      if (!item.productId) throw Errors.badRequest('Each item requires a productId.')
+      if (!Number(item.quantity) || Number(item.quantity) <= 0)
+        throw Errors.badRequest('Each item must have a positive quantity.')
     }
 
     const transfer = await withTransaction(async (client) => {
       const { rows: [t] } = await client.query(
-        `INSERT INTO transfers (from_warehouse_id, to_warehouse_id, status)
-         VALUES ($1, $2, 'draft') RETURNING *`,
-        [Number(fromWarehouseId), Number(toWarehouseId)]
+        `INSERT INTO transfers (from_warehouse_id, to_warehouse_id, status, created_by)
+         VALUES ($1, $2, 'draft', $3) RETURNING *`,
+        [Number(fromWarehouseId), Number(toWarehouseId), session.sub]
       )
       for (const item of items) {
         await client.query(
@@ -72,61 +105,55 @@ export async function POST(req: Request) {
       return t
     })
 
+    logger.info('transfer POST', `Transfer #${transfer.id} created by ${session.sub}`)
     return NextResponse.json({ message: 'Transfer created.', transfer }, { status: 201 })
   } catch (err) {
-    console.error('[transfer POST]', err)
-    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 })
+    return handleRouteError(err, 'transfer POST')
   }
 }
 
 export async function PATCH(req: Request) {
   try {
     const session = await getSession()
-    if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    if (!session) throw Errors.unauthorized()
 
     const { transferId, status } = await req.json()
-    if (!transferId || status !== 'completed') {
-      return NextResponse.json({ error: 'transferId and status=completed required.' }, { status: 400 })
-    }
+    if (!transferId || status !== 'completed')
+      throw Errors.badRequest('transferId and status=completed are required.')
 
     const { rows: [t] } = await queryRows(`SELECT * FROM transfers WHERE id = $1`, [Number(transferId)])
-    if (!t) return NextResponse.json({ error: 'Transfer not found.' }, { status: 404 })
-    if (t.status === 'completed') return NextResponse.json({ error: 'Already completed.' }, { status: 400 })
+    if (!t)                       throw Errors.notFound('Transfer not found.')
+    if (t.status === 'completed') throw Errors.badRequest('Transfer is already completed.')
 
-    const { rows: items } = await queryRows(`SELECT * FROM transfer_items WHERE transfer_id = $1`, [Number(transferId)])
+    const { rows: items } = await queryRows<TransferItemRow>(
+      `SELECT * FROM transfer_items WHERE transfer_id = $1`, [Number(transferId)]
+    )
 
     await withTransaction(async (client) => {
       for (const item of items) {
-        // Guard: check source stock
         const { rows: [src] } = await client.query(
-          `SELECT quantity FROM stocks WHERE product_id = $1 AND warehouse_id = $2`,
-          [item.product_id, t.from_warehouse_id]
+          `SELECT quantity FROM stocks WHERE product_id = $1 AND warehouse_id = $2 FOR UPDATE`,
+          [item.product_id, (t as { from_warehouse_id: number }).from_warehouse_id]
         )
-        if (!src || src.quantity < item.quantity) {
+        if (!src || (src as { quantity: number }).quantity < item.quantity) {
           throw new Error(`Insufficient stock for product ID ${item.product_id} in source warehouse.`)
         }
 
-        // Decrement source
         await client.query(
           `UPDATE stocks SET quantity = quantity - $1 WHERE product_id = $2 AND warehouse_id = $3`,
           [item.quantity, item.product_id, t.from_warehouse_id]
         )
-
-        // Upsert destination
         await client.query(
           `INSERT INTO stocks (product_id, warehouse_id, quantity) VALUES ($1, $2, $3)
            ON CONFLICT (product_id, warehouse_id) DO UPDATE SET quantity = stocks.quantity + $3`,
           [item.product_id, t.to_warehouse_id, item.quantity]
         )
-
-        // Log in ledger
         await client.query(
           `INSERT INTO stock_moves (move_type, ref_id, product_id, warehouse_id, delta) VALUES
            ('transfer_out', $1, $2, $3, $4),
            ('transfer_in',  $1, $2, $5, $4)`,
           [t.id, item.product_id, t.from_warehouse_id, item.quantity, t.to_warehouse_id]
         )
-
         await client.query(
           `UPDATE transfer_items SET transferred_qty = $1 WHERE id = $2`,
           [item.quantity, item.id]
@@ -135,10 +162,9 @@ export async function PATCH(req: Request) {
       await client.query(`UPDATE transfers SET status = 'completed' WHERE id = $1`, [t.id])
     })
 
+    logger.info('transfer PATCH', `Transfer #${transferId} completed by ${session.sub}`)
     return NextResponse.json({ message: 'Transfer completed. Stock moved.' })
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Internal server error.'
-    console.error('[transfer PATCH]', err)
-    return NextResponse.json({ error: msg }, { status: 400 })
+  } catch (err) {
+    return handleRouteError(err, 'transfer PATCH')
   }
 }

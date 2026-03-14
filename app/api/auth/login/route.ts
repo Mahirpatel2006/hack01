@@ -3,6 +3,8 @@ import { verifyPassword, signToken, cookieOptions, COOKIE_NAME } from '@/lib/aut
 import { queryOne, query } from '@/lib/db'
 import { validateEmail, validatePassword, sanitize } from '@/lib/validation'
 import { jwtVerify } from 'jose'
+import { checkRateLimit, AUTH_LIMIT } from '@/lib/rateLimit'
+import { logger } from '@/lib/logger'
 
 interface UserRow {
   id: string
@@ -16,6 +18,19 @@ interface UserRow {
 const GENERIC_ERROR = 'Incorrect email or password.'
 
 export async function POST(request: NextRequest) {
+  // ── Rate limiting ──────────────────────────────────────────────────────────
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    ?? request.headers.get('x-real-ip')
+    ?? 'unknown'
+  const { allowed, remaining } = checkRateLimit(`login:${ip}`, AUTH_LIMIT)
+  if (!allowed) {
+    logger.warn('auth/login', `Rate limited: ${ip}`)
+    return NextResponse.json(
+      { error: 'Too many login attempts. Please wait 15 minutes.', code: 'RATE_LIMITED' },
+      { status: 429, headers: { 'Retry-After': '900', 'X-RateLimit-Remaining': String(remaining) } }
+    )
+  }
+
   try {
     const body = await request.json()
     const { email: rawEmail, password } = body
@@ -35,13 +50,13 @@ export async function POST(request: NextRequest) {
     )
 
     if (!user || !user.is_active) {
-      await new Promise(r => setTimeout(r, 200))
+      await new Promise(r => setTimeout(r, 200 + Math.random() * 100))
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 })
     }
 
     const valid = await verifyPassword(password, user.password_hash)
     if (!valid) {
-      await new Promise(r => setTimeout(r, 200))
+      await new Promise(r => setTimeout(r, 200 + Math.random() * 100))
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 })
     }
 
@@ -51,13 +66,14 @@ export async function POST(request: NextRequest) {
     const { payload } = await jwtVerify(token, secret)
     const jti = payload.jti as string
 
-    const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? null
     const ua = request.headers.get('user-agent') ?? null
     await query(
       `INSERT INTO sessions (user_id, jti, expires_at, ip_address, user_agent)
        VALUES ($1, $2, NOW() + INTERVAL '7 days', $3::inet, $4)`,
-      [user.id, jti, ip, ua]
+      [user.id, jti, ip !== 'unknown' ? ip : null, ua]
     )
+
+    logger.info('auth/login', `User logged in: ${email}`)
 
     const response = NextResponse.json({
       user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role },
@@ -66,7 +82,7 @@ export async function POST(request: NextRequest) {
     return response
 
   } catch (err) {
-    console.error('[login]', err)
-    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 })
+    logger.error('auth/login', 'Login error', err)
+    return NextResponse.json({ error: 'Internal server error.', code: 'INTERNAL' }, { status: 500 })
   }
 }

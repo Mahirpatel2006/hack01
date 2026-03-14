@@ -1,14 +1,22 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { ThemeProvider } from '@/components/ThemeProvider'
-import { Navbar }        from '@/components/Navbar'
+import { ThemeProvider }  from '@/components/ThemeProvider'
+import { Navbar }         from '@/components/Navbar'
+import { ToastProvider }  from '@/components/ui/Toast'
+import { ErrorBoundary }  from '@/components/ui/ErrorBoundary'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata: Metadata = {
   title: 'CoreInventory — Inventory Management System',
-  description: 'A modular inventory management system with real-time stock tracking.',
+  description: 'A modular, real-time inventory management system with role-based access control.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'),
+  openGraph: {
+    title: 'CoreInventory',
+    description: 'Real-time inventory management with receipts, deliveries, transfers, and audit logs.',
+    type: 'website',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -16,13 +24,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning className={inter.variable}>
       <body className="font-sans antialiased min-h-screen bg-[var(--background)]">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <Navbar />
-          {/* Main content — offset by sidebar width on desktop */}
-          <main className="min-h-screen transition-all duration-300
-            lg:pl-[240px]
-            [&:has(+_*_.sidebar-collapsed)]:lg:pl-[72px]">
-            {children}
-          </main>
+          <ToastProvider>
+            <ErrorBoundary>
+              <Navbar />
+              <main className="min-h-screen transition-all duration-300 lg:pl-[240px]">
+                {children}
+              </main>
+            </ErrorBoundary>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>
