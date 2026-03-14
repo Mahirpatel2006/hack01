@@ -24,7 +24,7 @@ export default function DashboardPage() {
   const [activity, setActivity] = useState<Activity[]>([])
   const [fetching, setFetching] = useState(false)
   const [dismissed, setDismissed] = useState({ low: false, out: false })
-  const [showAlerts, setShowAlerts] = useState(true)
+  const [showAlerts, setShowAlerts] = useState(false)
   const totalAlerts = kpis.lowStock + kpis.outOfStock
 
   useEffect(() => { if (!loading && !user) router.push('/login') }, [user, loading, router])
@@ -109,9 +109,9 @@ export default function DashboardPage() {
         }
       />
 
-      {/* Stock Alerts - Top Right Corner */}
-      <div className={`fixed top-6 right-6 z-[60] flex flex-col gap-3 w-80 max-w-[calc(100vw-3rem)] pointer-events-none transition-all duration-300 ${
-        showAlerts ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
+      {/* Stock Alerts Panel - Toggled by Bell */}
+      <div className={`fixed top-24 right-8 z-[100] flex flex-col gap-4 w-96 max-w-[calc(100vw-4rem)] pointer-events-none transition-all duration-500 ease-in-out ${
+        showAlerts ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0'
       }`}>
         {kpis.outOfStock > 0 && !dismissed.out && (
           <div className="pointer-events-auto bg-[var(--card)] border-l-4 border-l-[var(--destructive)] p-4 rounded-2xl shadow-2xl flex items-start gap-3 backdrop-blur-md animate-in slide-in-from-right">
