@@ -5,6 +5,7 @@ import { Plus, CheckCircle, X, Check } from 'lucide-react'
 import { useAuth }        from '@/hooks/useAuth'
 import { DataTable, type Column } from '@/components/inventory/DataTable'
 import { StatusBadge }    from '@/components/inventory/StatusBadge'
+import { FilterBar }      from '@/components/inventory/FilterBar'
 import { PageHeader }     from '@/components/inventory/PageHeader'
 import { Button }         from '@/components/ui/Button'
 
@@ -23,6 +24,9 @@ export default function TransfersPage() {
   const [form, setForm] = useState({ fromWarehouseId:'', toWarehouseId:'', items:[{productId:'',quantity:'1'}] })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
 
   useEffect(() => { if (!loading && !user) router.push('/login') }, [user, loading, router])
   const load = () => {
@@ -67,10 +71,37 @@ export default function TransfersPage() {
   }
 
   if (loading || !user) return null
+
+  const filteredTransfers = transfers.filter(t => {
+    let matches = true
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      matches = matches && (t.fromWarehouse?.name.toLowerCase().includes(q) || t.toWarehouse?.name.toLowerCase().includes(q))
+    }
+    if (filterStatus) matches = matches && t.status === filterStatus
+    return matches
+  })
+  const hasActiveFilters = Boolean(searchQuery || filterStatus)
+  const clearFilters = () => { setSearchQuery(''); setFilterStatus('') }
+
   return (
     <div className="p-6 md:p-8">
       <PageHeader title="Transfers" subtitle="Move stock between warehouses."
         action={<Button onClick={()=>setShowCreate(true)}><Plus className="w-4 h-4"/> New Transfer</Button>}
+      />
+
+      <FilterBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search by warehouse..."
+        filters={[
+          {
+            key: 'status', label: 'Status', value: filterStatus, onChange: setFilterStatus,
+            options: [ { label: 'All Statuses', value: '' }, { label: 'Draft', value: 'draft' }, { label: 'Completed', value: 'completed' } ]
+          }
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
       />
       {showCreate && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -129,7 +160,7 @@ export default function TransfersPage() {
           </div>
         </div>
       )}
-      <DataTable columns={columns} rows={transfers} loading={fetching} keyExtractor={t=>t.id} emptyMessage="No transfers yet." />
+      <DataTable columns={columns} rows={filteredTransfers} loading={fetching} keyExtractor={t=>t.id} emptyMessage="No transfers match your filters." />
     </div>
   )
 }

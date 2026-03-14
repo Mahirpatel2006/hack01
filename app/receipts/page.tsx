@@ -5,6 +5,7 @@ import { Plus, CheckCircle, X, Check } from 'lucide-react'
 import { useAuth }        from '@/hooks/useAuth'
 import { DataTable, type Column } from '@/components/inventory/DataTable'
 import { StatusBadge }    from '@/components/inventory/StatusBadge'
+import { FilterBar }      from '@/components/inventory/FilterBar'
 import { PageHeader }     from '@/components/inventory/PageHeader'
 import { Button }         from '@/components/ui/Button'
 import { Input }          from '@/components/ui/Input'
@@ -25,6 +26,10 @@ export default function ReceiptsPage() {
   const [recvQtys, setRecvQtys]  = useState<Record<number, string>>({})
   const [saving, setSaving]      = useState(false)
   const [error, setError]        = useState('')
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterWarehouse, setFilterWarehouse] = useState('')
 
   useEffect(() => { if (!loading && !user) router.push('/login') }, [user, loading, router])
 
@@ -89,10 +94,38 @@ export default function ReceiptsPage() {
 
   if (loading || !user) return null
 
+  const filteredReceipts = receipts.filter(r => {
+    let matches = true
+    if (searchQuery) matches = matches && r.supplier.toLowerCase().includes(searchQuery.toLowerCase())
+    if (filterStatus) matches = matches && r.status === filterStatus
+    if (filterWarehouse) matches = matches && r.warehouse?.id.toString() === filterWarehouse
+    return matches
+  })
+  const hasActiveFilters = Boolean(searchQuery || filterStatus || filterWarehouse)
+  const clearFilters = () => { setSearchQuery(''); setFilterStatus(''); setFilterWarehouse('') }
+
   return (
     <div className="p-6 md:p-8">
       <PageHeader title="Receipts" subtitle="Manage incoming goods from vendors."
         action={<Button onClick={() => setShowCreate(true)}><Plus className="w-4 h-4"/> New Receipt</Button>}
+      />
+
+      <FilterBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search by supplier..."
+        filters={[
+          {
+            key: 'status', label: 'Status', value: filterStatus, onChange: setFilterStatus,
+            options: [ { label: 'All Statuses', value: '' }, { label: 'Draft', value: 'draft' }, { label: 'Validated', value: 'validated' } ]
+          },
+          {
+            key: 'warehouse', label: 'Warehouse', value: filterWarehouse, onChange: setFilterWarehouse,
+            options: [ { label: 'All Warehouses', value: '' }, ...warehouses.map(w => ({ label: w.name, value: String(w.id) })) ]
+          }
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
       />
 
       {/* Create modal */}
@@ -160,7 +193,7 @@ export default function ReceiptsPage() {
         </div>
       )}
 
-      <DataTable columns={columns} rows={receipts} loading={fetching} keyExtractor={r => r.id} emptyMessage="No receipts yet." />
+      <DataTable columns={columns} rows={filteredReceipts} loading={fetching} keyExtractor={r => r.id} emptyMessage="No receipts match your filters." />
     </div>
   )
 }

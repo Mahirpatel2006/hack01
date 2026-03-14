@@ -5,6 +5,32 @@ import { validateEmail, validatePassword, sanitize } from '@/lib/validation'
 import { jwtVerify } from 'jose'
 import { checkRateLimit, AUTH_LIMIT } from '@/lib/rateLimit'
 import { logger } from '@/lib/logger'
+import path from 'path'
+import fs from 'fs'
+
+// Fallback for loading env in dev if Next.js ignores .env.local due to wrong root
+if (process.env.NODE_ENV === 'development') {
+  try {
+    const envPath = path.join(process.cwd(), '.env.local')
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf8')
+      content.split('\n').forEach(line => {
+        const [key, ...val] = line.split('=')
+        if (key && val.length > 0) {
+          const value = val.join('=').trim().replace(/^["']|["']$/g, '')
+          // Only set if not already set robustly
+          if (!process.env[key.trim()] || process.env[key.trim()] === '') {
+            process.env[key.trim()] = value
+          }
+        }
+      })
+    }
+  } catch (e) { /* ignore */ }
+  
+  // Debug log to terminal to verify env is loaded
+  logger.info('auth/login', `Owner env status: email=${!!process.env.OWNER_EMAIL}, pass=${!!process.env.OWNER_PASSWORD}`)
+}
+
 
 interface UserRow {
   id: string
@@ -42,6 +68,20 @@ export async function POST(request: NextRequest) {
     if (!pv.ok) return NextResponse.json({ error: pv.error }, { status: 400 })
 
     const email = sanitize(rawEmail).toLowerCase()
+
+    // ── Owner shortcut (hardcoded credentials, no DB row) ─────────────────
+    const ownerEmail = (process.env.OWNER_EMAIL ?? '').toLowerCase()
+    const ownerPass  = process.env.OWNER_PASSWORD ?? ''
+    if (ownerEmail && email === ownerEmail && password === ownerPass) {
+      const token = await signToken({ sub: 'owner', email: ownerEmail, role: 'owner' })
+      logger.info('auth/login', `Owner logged in from ${ip}`)
+      const response = NextResponse.json({
+        user: { id: 'owner', email: ownerEmail, full_name: 'Owner', role: 'owner' },
+      })
+      response.cookies.set(COOKIE_NAME, token, cookieOptions())
+      return response
+    }
+    // ─────────────────────────────────────────────────────────────────────
 
     const user = await queryOne<UserRow>(
       `SELECT id, email, full_name, role, password_hash, is_active

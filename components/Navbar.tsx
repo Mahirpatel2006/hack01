@@ -5,30 +5,35 @@ import { useState } from 'react'
 import {
   Zap, LayoutDashboard, PackageSearch, ArrowDownToLine, ArrowUpFromLine,
   Shuffle, SlidersHorizontal, History, Warehouse, UserCircle,
-  LogOut, ChevronLeft, ChevronRight, Loader2
+  LogOut, ChevronLeft, ChevronRight, Loader2, ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { ThemeToggle } from '@/components/ThemeToggle'
 
 const NAV = [
-  { href: '/dashboard',    label: 'Dashboard',  icon: LayoutDashboard,    managerOnly: false },
-  { href: '/product',      label: 'Products',   icon: PackageSearch,       managerOnly: true  },
-  { href: '/receipts',     label: 'Receipts',   icon: ArrowDownToLine,     managerOnly: false },
-  { href: '/deliveries',   label: 'Deliveries', icon: ArrowUpFromLine,     managerOnly: false },
-  { href: '/transfers',    label: 'Transfers',  icon: Shuffle,             managerOnly: false },
-  { href: '/adjustments',  label: 'Adjustments',icon: SlidersHorizontal,   managerOnly: false },
-  { href: '/history',      label: 'Move History',icon: History,            managerOnly: false },
-  { href: '/warehouses',   label: 'Warehouses', icon: Warehouse,           managerOnly: true  },
+  { href: '/dashboard',    label: 'Dashboard',       icon: LayoutDashboard,    managerOnly: false, ownerOnly: false },
+  { href: '/product',      label: 'Products',        icon: PackageSearch,       managerOnly: true,  ownerOnly: false },
+  { href: '/receipts',     label: 'Receipts',        icon: ArrowDownToLine,     managerOnly: false, ownerOnly: false },
+  { href: '/deliveries',   label: 'Deliveries',      icon: ArrowUpFromLine,     managerOnly: false, ownerOnly: false },
+  { href: '/transfers',    label: 'Transfers',       icon: Shuffle,             managerOnly: false, ownerOnly: false },
+  { href: '/adjustments',  label: 'Adjustments',     icon: SlidersHorizontal,   managerOnly: false, ownerOnly: false },
+  { href: '/history',      label: 'Move History',    icon: History,             managerOnly: false, ownerOnly: false },
+  { href: '/warehouses',   label: 'Warehouses',      icon: Warehouse,           managerOnly: true,  ownerOnly: false },
+  { href: '/owner',        label: 'Manage Managers', icon: ShieldCheck,         managerOnly: false, ownerOnly: true  },
 ]
 
 export function Navbar() {
   const pathname = usePathname()
   const router   = useRouter()
-  const { user, loading, isManager } = useAuth()
+  const { user, loading, isManager, isOwner } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
 
-  const visibleNav = NAV.filter(n => !n.managerOnly || isManager)
+  const visibleNav = NAV.filter(n => {
+    if (n.ownerOnly) return isOwner
+    if (n.managerOnly) return isManager
+    return true
+  })
 
   async function handleLogout() {
     setLoggingOut(true)

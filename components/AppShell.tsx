@@ -5,26 +5,27 @@ import React, { useState, useEffect } from 'react'
 import {
   Zap, LayoutDashboard, PackageSearch, ArrowDownToLine, ArrowUpFromLine,
   Shuffle, SlidersHorizontal, History, Warehouse, UserCircle,
-  LogOut, ChevronLeft, ChevronRight, Loader2, Menu, X
+  LogOut, ChevronLeft, ChevronRight, Loader2, Menu, X, ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { ThemeToggle } from '@/components/ThemeToggle'
 
 const NAV = [
-  { href: '/dashboard',    label: 'Dashboard',  icon: LayoutDashboard,    managerOnly: false },
-  { href: '/product',      label: 'Products',   icon: PackageSearch,       managerOnly: true  },
-  { href: '/receipts',     label: 'Receipts',   icon: ArrowDownToLine,     managerOnly: false },
-  { href: '/deliveries',   label: 'Deliveries', icon: ArrowUpFromLine,     managerOnly: false },
-  { href: '/transfers',    label: 'Transfers',  icon: Shuffle,             managerOnly: false },
-  { href: '/adjustments',  label: 'Adjustments',icon: SlidersHorizontal,   managerOnly: false },
-  { href: '/history',      label: 'Move History',icon: History,            managerOnly: false },
-  { href: '/warehouses',   label: 'Warehouses', icon: Warehouse,           managerOnly: true  },
+  { href: '/dashboard',    label: 'Dashboard',       icon: LayoutDashboard,    managerOnly: false, ownerOnly: false },
+  { href: '/product',      label: 'Products',        icon: PackageSearch,       managerOnly: true,  ownerOnly: false },
+  { href: '/receipts',     label: 'Receipts',        icon: ArrowDownToLine,     managerOnly: false, ownerOnly: false },
+  { href: '/deliveries',   label: 'Deliveries',      icon: ArrowUpFromLine,     managerOnly: false, ownerOnly: false },
+  { href: '/transfers',    label: 'Transfers',       icon: Shuffle,             managerOnly: false, ownerOnly: false },
+  { href: '/adjustments',  label: 'Adjustments',     icon: SlidersHorizontal,   managerOnly: false, ownerOnly: false },
+  { href: '/history',      label: 'Move History',    icon: History,             managerOnly: false, ownerOnly: false },
+  { href: '/warehouses',   label: 'Warehouses',      icon: Warehouse,           managerOnly: true,  ownerOnly: false },
+  { href: '/owner',        label: 'Manage Managers', icon: ShieldCheck,         managerOnly: false, ownerOnly: true  },
 ]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router   = useRouter()
-  const { user, loading, isManager } = useAuth()
+  const { user, loading, isManager, isOwner } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
@@ -34,7 +35,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileOpen(false)
   }, [pathname])
 
-  const visibleNav = NAV.filter(n => !n.managerOnly || isManager)
+  const visibleNav = NAV.filter(n => {
+    if (n.ownerOnly) return isOwner
+    if (n.managerOnly) return isManager
+    return true
+  })
 
   async function handleLogout() {
     setLoggingOut(true)
@@ -51,12 +56,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[var(--background)] flex flex-col md:flex-row">
       {/* Mobile Topbar */}
-      <header className="md:hidden flex items-center justify-between h-16 px-4 border-b border-[var(--border)] bg-[var(--card)] sticky top-0 z-30 shadow-sm">
+      <header className="md:hidden flex items-center justify-between h-16 px-4 border-b border-(--border) bg-(--card) sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-[var(--primary)] flex items-center justify-center shadow-[var(--primary)]/30">
             <Zap className="w-4 h-4 text-white fill-current" />
           </div>
-          <span className="font-black text-[var(--foreground)]">CoreInventory</span>
+          <span className="font-black text-(--foreground)">CoreInventory</span>
         </div>
         <button 
           onClick={() => setMobileOpen(true)}
@@ -91,14 +96,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             {!collapsed && (
               <div className="max-w-[140px]">
-                <p className="text-sm font-black tracking-tight text-[var(--foreground)] truncate">CoreInventory</p>
-                <p className="text-[10px] font-semibold text-[var(--primary)] uppercase tracking-widest">by HackBase</p>
+                <p className="text-sm font-black tracking-tight text-(--foreground) truncate">CoreInventory</p>
+                <p className="text-[10px] font-semibold text-(--primary) uppercase tracking-widest">by HackBase</p>
               </div>
             )}
           </div>
           {/* Mobile close */}
           <button 
-            className="md:hidden p-2 rounded-xl hover:bg-[var(--muted)]"
+            className="md:hidden p-2 rounded-xl hover:bg-(--muted)"
             onClick={() => setMobileOpen(false)}
           >
             <X className="w-5 h-5" />
@@ -108,7 +113,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Nav links */}
         <nav className="flex-1 overflow-y-auto py-5 px-3 space-y-1.5 scrollbar-thin">
           {loading ? (
-             <div className="flex justify-center pt-8"><Loader2 className="w-6 h-6 animate-spin text-[var(--muted-foreground)]" /></div>
+             <div className="flex justify-center pt-8"><Loader2 className="w-6 h-6 animate-spin text-(--muted-foreground)" /></div>
           ) : visibleNav.map(({ href, label, icon: Icon }) => {
               const active = pathname === href || pathname.startsWith(href + '/')
               return (
@@ -117,8 +122,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   href={href}
                   className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold transition-all group relative overflow-hidden
                     ${active
-                      ? 'bg-[var(--primary)] text-white shadow-md shadow-[var(--primary)]/20'
-                      : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]'
+                      ? 'bg-(--primary) text-white shadow-md shadow-(--primary)/20'
+                      : 'text-(--muted-foreground) hover:bg-(--muted) hover:text-(--foreground)'
                     } ${collapsed ? 'md:justify-center' : ''}`}
                   title={collapsed ? label : undefined}
                 >
@@ -134,13 +139,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-[var(--border)] p-4 space-y-3 shrink-0 bg-[var(--card)] shadow-[0_-10px_10px_-10px_rgba(0,0,0,0.05)]">
+        <div className="border-t border-(--border) p-4 space-y-3 shrink-0 bg-(--card) shadow-[0_-10px_10px_-10px_rgba(0,0,0,0.05)]">
           {!loading && user && (
             <Link href="/profile"
-              className={`flex items-center gap-3 px-2 py-2.5 rounded-[1.25rem] hover:bg-[var(--muted)] transition-colors 
+              className={`flex items-center gap-3 px-2 py-2.5 rounded-[1.25rem] hover:bg-(--muted) transition-colors 
                 ${collapsed ? 'md:justify-center' : ''}`}
             >
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary)] to-amber-500 text-white flex flex-col items-center justify-center font-bold text-sm shrink-0 shadow-lg shadow-brand-orange/20 overflow-hidden">
+              <div className="w-9 h-9 rounded-full bg-linear-to-br from-(--primary) to-amber-500 text-white flex flex-col items-center justify-center font-bold text-sm shrink-0 shadow-lg shadow-brand-orange/20 overflow-hidden">
                 {user.avatar_url ? (
                   <img src={user.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
@@ -148,8 +153,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )}
               </div>
               <div className={`${collapsed ? 'md:hidden' : 'block'} flex-1 min-w-0`}>
-                <p className="text-sm font-bold text-[var(--foreground)] truncate">{user.full_name}</p>
-                <p className="text-[10px] text-[var(--primary)] font-semibold uppercase tracking-widest">{user.role}</p>
+                <p className="text-sm font-bold text-(--foreground) truncate">{user.full_name}</p>
+                <p className="text-[10px] text-(--primary) font-semibold uppercase tracking-widest">{user.role}</p>
               </div>
             </Link>
           )}
@@ -160,8 +165,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               onClick={handleLogout}
               disabled={loggingOut}
               className={`flex items-center justify-center gap-2 py-2.5 rounded-[1.25rem] text-sm font-bold transition-all
-                ${collapsed ? 'md:w-full md:px-0 bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-white' : 'flex-1 px-4'}
-                text-[var(--muted-foreground)] hover:bg-[var(--destructive)] hover:text-white hover:shadow-lg hover:shadow-red-500/20`}
+                ${collapsed ? 'md:w-full md:px-0 bg-(--muted) text-(--muted-foreground) hover:text-white' : 'flex-1 px-4'}
+                text-(--muted-foreground) hover:bg-(--destructive) hover:text-white hover:shadow-lg hover:shadow-red-500/20`}
               title="Sign out"
             >
               {loggingOut ? <Loader2 className="w-[18px] h-[18px] animate-spin" /> : <LogOut className="w-[18px] h-[18px]" />}
@@ -171,7 +176,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <button
             onClick={() => setCollapsed(c => !c)}
-            className="hidden md:flex w-full items-center justify-center py-2 rounded-xl text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+            className="hidden md:flex w-full items-center justify-center py-2 rounded-xl text-(--muted-foreground) hover:bg-(--muted) hover:text-(--foreground) transition-colors"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}

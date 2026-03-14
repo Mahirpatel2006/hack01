@@ -2,16 +2,17 @@
 import { useEffect, useState } from 'react'
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowDownToLine, ArrowUpFromLine, Shuffle, SlidersHorizontal } from 'lucide-react'
+import { Shuffle, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { DataTable, type Column } from '@/components/inventory/DataTable'
+import { FilterBar } from '@/components/inventory/FilterBar'
 import { PageHeader } from '@/components/inventory/PageHeader'
 
 interface Move { id:number; move_type:string; ref_id:number; delta:number; created_at:string; product:{id:number;name:string;sku:string}; warehouse:{id:number;name:string} }
 
 const TYPE_ICON: Record<string, React.ReactElement> = {
-  receipt:      <ArrowDownToLine className="w-3.5 h-3.5"/>,
-  delivery:     <ArrowUpFromLine className="w-3.5 h-3.5"/>,
+  receipt:      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M12 3v14M5 10l7 7 7-7M5 21h14"/></svg>,
+  delivery:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M12 21V7M5 14l7-7 7 7M5 3h14"/></svg>,
   transfer_out: <Shuffle className="w-3.5 h-3.5"/>,
   transfer_in:  <Shuffle className="w-3.5 h-3.5"/>,
   adjustment:   <SlidersHorizontal className="w-3.5 h-3.5"/>,
@@ -32,6 +33,9 @@ export default function HistoryPage() {
   const [page, setPage]     = useState(1)
   const [fetching, setFetching] = useState(true)
   const limit = 50
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterType, setFilterType] = useState('')
 
   useEffect(() => { if (!loading && !user) router.push('/login') }, [user, loading, router])
 
@@ -64,10 +68,44 @@ export default function HistoryPage() {
   if (loading || !user) return null
   const totalPages = Math.ceil(total / limit)
 
+  const filteredMoves = moves.filter(m => {
+    let matches = true
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      matches = matches && (m.product?.name.toLowerCase().includes(q) || m.product?.sku.toLowerCase().includes(q))
+    }
+    if (filterType) matches = matches && m.move_type === filterType
+    return matches
+  })
+  const hasActiveFilters = Boolean(searchQuery || filterType)
+  const clearFilters = () => { setSearchQuery(''); setFilterType('') }
+
   return (
     <div className="p-6 md:p-8">
       <PageHeader title="Move History" subtitle={`Stock ledger — ${total} total entries.`} />
-      <DataTable columns={columns} rows={moves} loading={fetching} keyExtractor={m=>m.id} emptyMessage="No stock movements recorded yet." />
+      
+      <FilterBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search product by name or SKU..."
+        filters={[
+          {
+            key: 'type', label: 'Move Type', value: filterType, onChange: setFilterType,
+            options: [
+              { label: 'All Types', value: '' },
+              { label: 'Receipt', value: 'receipt' },
+              { label: 'Delivery', value: 'delivery' },
+              { label: 'Transfer Out', value: 'transfer_out' },
+              { label: 'Transfer In', value: 'transfer_in' },
+              { label: 'Adjustment', value: 'adjustment' }
+            ]
+          }
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+      />
+
+      <DataTable columns={columns} rows={filteredMoves} loading={fetching} keyExtractor={m=>m.id} emptyMessage="No stock movements match your filters." />
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-4 mt-6">
           <button disabled={page<=1} onClick={()=>setPage(p=>p-1)} className="btn-secondary disabled:opacity-40">← Previous</button>
