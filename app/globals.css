@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-brand-orange: #FC6E20;
+  --color-brand-cream: #FFE7D0;
+  --color-brand-black: #1B1B1B;
+  --color-brand-charcoal: #323232;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+}
+
+@layer base {
+  :root {
+    --background: #FFE7D0;
+    --foreground: #1B1B1B;
+    --card: #FFFFFF;
+    --card-foreground: #1B1B1B;
+    --border: #E5D0BB;
+    --input: #FFFFFF;
+    --primary: #FC6E20;
+    --primary-foreground: #FFFFFF;
+    --secondary: #323232;
+    --secondary-foreground: #FFE7D0;
+    --muted: #F2D5B8;
+    --muted-foreground: #5C554F;
+    --ring: #FC6E20;
+    --destructive: #EF4444;
+    --success: #10B981;
+  }
+
+  /* Note: To enable dark mode via a class (e.g. on the <html> tag), we use .dark */
+  .dark {
+    --background: #1B1B1B;
+    --foreground: #FFE7D0;
+    --card: #323232;
+    --card-foreground: #FFE7D0;
+    --border: #4A4A4A;
+    --input: #4A4A4A;
+    --primary: #FC6E20;
+    --primary-foreground: #FFFFFF;
+    --secondary: #FFE7D0;
+    --secondary-foreground: #1B1B1B;
+    --muted: #4A4A4A;
+    --muted-foreground: #A19D9A;
+    --ring: #FC6E20;
+    --destructive: #EF4444;
+    --success: #10B981;
+  }
+
+  /* Automatically respect system preference if no class is set on html */
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) {
+      --background: #1B1B1B;
+      --foreground: #FFE7D0;
+      --card: #323232;
+      --card-foreground: #FFE7D0;
+      --border: #4A4A4A;
+      --input: #4A4A4A;
+      --primary: #FC6E20;
+      --primary-foreground: #FFFFFF;
+      --secondary: #FFE7D0;
+      --secondary-foreground: #1B1B1B;
+      --muted: #4A4A4A;
+      --muted-foreground: #A19D9A;
+      --ring: #FC6E20;
+      --destructive: #EF4444;
+      --success: #10B981;
+    }
+  }
+
+  body {
+    @apply bg-[var(--background)] text-[var(--foreground)] antialiased transition-colors duration-300;
+  }
+
+  * {
+    @apply border-[var(--border)];
+  }
+}
+
+/* Auth Page Layout */
+@utility auth-page {
+  @apply min-h-screen flex flex-col items-center justify-center p-4 selection:bg-[var(--primary)] selection:text-[var(--primary-foreground)];
+}
+
+/* Component Bases */
+@utility btn-base {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-3 
+         rounded-full font-semibold transition-all duration-200 
+         active:scale-95 disabled:opacity-50 disabled:pointer-events-none
+         text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)];
+}
+
+@utility btn-primary {
+  @apply btn-base bg-[var(--primary)] text-[var(--primary-foreground)] 
+         hover:brightness-110 shadow-lg shadow-brand-orange/20;
+}
+
+@utility btn-secondary {
+  @apply btn-base bg-[var(--secondary)] text-[var(--secondary-foreground)] 
+         hover:opacity-90 shadow-md;
+}
+
+@utility btn-outline {
+  @apply btn-base border-2 border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)];
+}
+
+@utility btn-ghost {
+  @apply btn-base text-[var(--foreground)] hover:bg-[var(--muted)];
+}
+
+@utility btn-danger {
+  @apply btn-base bg-[var(--destructive)] text-white hover:brightness-110 shadow-lg shadow-red-500/20;
+}
+
+@utility card-base {
+  @apply bg-[var(--card)] text-[var(--card-foreground)] 
+         rounded-[2rem] border border-[var(--border)] p-8 shadow-sm transition-all duration-300;
+}
+
+@utility input-base {
+  @apply w-full bg-[var(--input)] text-[var(--foreground)] 
+         px-5 py-3.5 rounded-2xl border border-[var(--border)]
+         focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:border-transparent
+         transition-all placeholder:text-[var(--muted-foreground)];
+}
+
+@utility badge-base {
+  @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
+}
