@@ -173,7 +173,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setCollapsed(c => !c)}
             className="hidden md:flex w-full items-center justify-center py-2 rounded-xl text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          > Collapse
+          >
+            {!collapsed && <span className="mr-2 text-sm font-semibold">Collapse</span>}
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
