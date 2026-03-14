@@ -11,15 +11,20 @@ const PUBLIC_ROUTES = ['/api/auth/login', '/api/auth/register', '/api/auth/otp']
 const MANAGER_PAGES = ['/product', '/warehouses']
 const MANAGER_APIS  = ['/api/product', '/api/warehouse', '/api/category']
 
+/** Pages only owners can access */
+const OWNER_PAGES = ['/owner']
+
 /** All protected pages (require any authenticated user) */
 const PROTECTED_PAGES = [
   '/dashboard', '/product', '/warehouses',
   '/receipts', '/deliveries', '/transfers',
   '/adjustments', '/history', '/profile', '/access-denied',
+  ...OWNER_PAGES
 ]
 
 // suppress unused-import warning
 void PUBLIC_ROUTES
+void OWNER_PAGES
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
 
@@ -40,9 +45,10 @@ export default async function proxy(request: NextRequest) {
   const payload = token ? await verifyToken(token) : null
 
   const isAuthRoute     = AUTH_ROUTES.some(r => pathname.startsWith(r))
-  const isProtectedPage = PROTECTED_PAGES.some(r => pathname.startsWith(r))
+  const isProtectedPage = PROTECTED_PAGES.some(r => pathname.startsWith(r)) || OWNER_PAGES.some(r => pathname.startsWith(r))
   const isManagerPage   = MANAGER_PAGES.some(r => pathname.startsWith(r))
   const isManagerApi    = MANAGER_APIS.some(r => pathname.startsWith(r))
+  const isOwnerPage     = OWNER_PAGES.some(r => pathname.startsWith(r))
 
   // ── Not authenticated → redirect to login ─────────────────────────────────
   if (!payload && isProtectedPage) {
@@ -61,17 +67,26 @@ export default async function proxy(request: NextRequest) {
   }
 
   // ── Role check: manager-only pages ────────────────────────────────────────
-  if (payload && isManagerPage && payload.role !== 'manager') {
+  if (payload && isManagerPage && payload.role !== 'manager' && payload.role !== 'owner') {
     const url = request.nextUrl.clone()
     url.pathname = '/access-denied'
+    logger.warn('middleware', `Forbidden: ${payload.role} tried manager page ${pathname}`)
+    return NextResponse.redirect(url)
+  }
+
+  // ── Role check: owner-only pages ──────────────────────────────────────────
+  if (payload && isOwnerPage && payload.role !== 'owner') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/access-denied'
+    logger.warn('middleware', `Forbidden: ${payload.role} tried owner page ${pathname}`)
     return NextResponse.redirect(url)
   }
 
   // ── Role check: manager-only API mutations ────────────────────────────────
   const isMutation = pathname.includes('/add') || pathname.includes('/update') || pathname.includes('/delete')
   if (isManagerApi && isMutation) {
-    if (!payload || payload.role !== 'manager') {
-      logger.warn('middleware', `Forbidden: non-manager tried ${pathname}`)
+    if (!payload || (payload.role !== 'manager' && payload.role !== 'owner')) {
+      logger.warn('middleware', `Forbidden: ${payload?.role} tried ${pathname}`)
       return NextResponse.json({ error: 'Forbidden.', code: 'FORBIDDEN' }, { status: 403 })
     }
   }

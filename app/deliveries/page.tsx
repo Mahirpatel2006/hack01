@@ -5,6 +5,7 @@ import { Plus, CheckCircle, X, Check } from 'lucide-react'
 import { useAuth }        from '@/hooks/useAuth'
 import { DataTable, type Column } from '@/components/inventory/DataTable'
 import { StatusBadge }    from '@/components/inventory/StatusBadge'
+import { FilterBar }      from '@/components/inventory/FilterBar'
 import { PageHeader }     from '@/components/inventory/PageHeader'
 import { Button }         from '@/components/ui/Button'
 import { Input }          from '@/components/ui/Input'
@@ -24,6 +25,9 @@ export default function DeliveriesPage() {
   const [form, setForm] = useState({ customer:'', items:[{productId:'', quantity:'1', warehouseId:''}] })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
 
   useEffect(() => { if (!loading && !user) router.push('/login') }, [user, loading, router])
   const load = () => {
@@ -67,10 +71,34 @@ export default function DeliveriesPage() {
   }
 
   if (loading || !user) return null
+
+  const filteredDeliveries = deliveries.filter(d => {
+    let matches = true
+    if (searchQuery) matches = matches && d.customer.toLowerCase().includes(searchQuery.toLowerCase())
+    if (filterStatus) matches = matches && d.status === filterStatus
+    return matches
+  })
+  const hasActiveFilters = Boolean(searchQuery || filterStatus)
+  const clearFilters = () => { setSearchQuery(''); setFilterStatus('') }
+
   return (
     <div className="p-6 md:p-8">
       <PageHeader title="Deliveries" subtitle="Manage outgoing goods to customers."
         action={<Button onClick={()=>setShowCreate(true)}><Plus className="w-4 h-4"/> New Delivery</Button>}
+      />
+
+      <FilterBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search by customer..."
+        filters={[
+          {
+            key: 'status', label: 'Status', value: filterStatus, onChange: setFilterStatus,
+            options: [ { label: 'All Statuses', value: '' }, { label: 'Draft', value: 'draft' }, { label: 'Validated', value: 'validated' } ]
+          }
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
       />
       {showCreate && (
         <div className="fixed inset-0 bg-[var(--background)]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -145,7 +173,7 @@ export default function DeliveriesPage() {
           </div>
         </div>
       )}
-      <DataTable columns={columns} rows={deliveries} loading={fetching} keyExtractor={d=>d.id} emptyMessage="No deliveries yet." />
+      <DataTable columns={columns} rows={filteredDeliveries} loading={fetching} keyExtractor={d=>d.id} emptyMessage="No deliveries match your filters." />
     </div>
   )
 }

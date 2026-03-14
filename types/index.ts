@@ -3,7 +3,7 @@
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'manager' | 'staff'
+export type UserRole = 'owner' | 'manager' | 'staff'
 
 export interface User {
   id: string

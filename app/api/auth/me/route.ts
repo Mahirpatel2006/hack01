@@ -16,6 +16,21 @@ export async function GET() {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
 
+    // ── Owner shortcut — no DB row ─────────────────────────────────────────
+    if (session.sub === 'owner' && session.role === 'owner') {
+      return NextResponse.json({
+        user: {
+          id: 'owner',
+          email: session.email,
+          full_name: 'Owner',
+          role: 'owner',
+          avatar_url: null,
+          created_at: new Date().toISOString(),
+        },
+      })
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     const user = await queryOne<UserRow>(
       'SELECT id, email, full_name, role, avatar_url, created_at FROM users WHERE id = $1',
       [session.sub]
