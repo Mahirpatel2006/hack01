@@ -63,11 +63,11 @@ export default function AdjustmentsPage() {
         action={<Button onClick={()=>setShowForm(true)}><Plus className="w-4 h-4"/> New Adjustment</Button>}
       />
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="card-base w-full max-w-md relative">
-            <button onClick={()=>setShowForm(false)} className="absolute top-4 right-4 text-[var(--muted-foreground)]"><X className="w-5 h-5"/></button>
-            <h2 className="text-xl font-black mb-6">Record Adjustment</h2>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-[var(--background)]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="card-base w-full max-w-md relative shadow-2xl">
+            <button onClick={()=>setShowForm(false)} className="absolute top-5 right-5 text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors"><X className="w-5 h-5"/></button>
+            <h2 className="text-2xl font-black mb-6 tracking-tight text-[var(--foreground)]">Record Adjustment</h2>
+            <div className="space-y-5">
               <div>
                 <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-2">Product</label>
                 <select value={form.productId} onChange={e=>setForm(f=>({...f,productId:e.target.value}))} className="input-base w-full">
@@ -81,16 +81,16 @@ export default function AdjustmentsPage() {
                 </select>
               </div>
               {currentStock !== null && (
-                <p className="text-sm text-[var(--muted-foreground)] bg-[var(--muted)] rounded-lg px-4 py-2">
-                  Current recorded stock: <strong className="text-[var(--foreground)]">{currentStock}</strong>
+                <p className="text-sm font-medium text-[var(--muted-foreground)] bg-[var(--muted)]/50 rounded-xl px-4 py-3 border border-[var(--border)]">
+                  Current recorded stock: <strong className="text-[var(--foreground)] font-mono">{currentStock}</strong>
                 </p>
               )}
               <Input type="number" label="Physical Count (new quantity)" value={form.quantity} onChange={e=>setForm(f=>({...f,quantity:e.target.value}))} placeholder="Enter actual counted qty" min="0" required />
               <Input label="Reason (optional)" value={form.reason} onChange={e=>setForm(f=>({...f,reason:e.target.value}))} placeholder="e.g. Damaged goods, recount" />
-              {error&&<p className="text-[var(--destructive)] text-sm">{error}</p>}
-              <div className="flex gap-3 pt-2">
-                <Button onClick={handleSave} loading={saving} className="flex-1"><Check className="w-4 h-4"/> Apply Adjustment</Button>
-                <Button variant="secondary" onClick={()=>setShowForm(false)}>Cancel</Button>
+              {error&&<p className="text-[var(--destructive)] text-sm font-semibold">{error}</p>}
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[var(--border)] mt-6">
+                <Button onClick={handleSave} loading={saving} className="w-full sm:flex-1"><Check className="w-4 h-4"/> Apply Adjustment</Button>
+                <Button variant="secondary" onClick={()=>setShowForm(false)} className="w-full sm:w-auto">Cancel</Button>
               </div>
             </div>
           </div>

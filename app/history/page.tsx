@@ -6,6 +6,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Shuffle, SlidersHorizontal } from 'lu
 import { useAuth } from '@/hooks/useAuth'
 import { DataTable, type Column } from '@/components/inventory/DataTable'
 import { PageHeader } from '@/components/inventory/PageHeader'
+import { Button }     from '@/components/ui/Button'
 
 interface Move { id:number; move_type:string; ref_id:number; delta:number; created_at:string; product:{id:number;name:string;sku:string}; warehouse:{id:number;name:string} }
 
@@ -70,9 +71,9 @@ export default function HistoryPage() {
       <DataTable columns={columns} rows={moves} loading={fetching} keyExtractor={m=>m.id} emptyMessage="No stock movements recorded yet." />
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-4 mt-6">
-          <button disabled={page<=1} onClick={()=>setPage(p=>p-1)} className="btn-secondary disabled:opacity-40">← Previous</button>
-          <span className="text-sm text-[var(--muted-foreground)]">Page {page} of {totalPages}</span>
-          <button disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)} className="btn-secondary disabled:opacity-40">Next →</button>
+          <Button variant="secondary" disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← Previous</Button>
+          <span className="text-sm font-semibold text-[var(--muted-foreground)]">Page {page} of {totalPages}</span>
+          <Button variant="secondary" disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)}>Next →</Button>
         </div>
       )}
     </div>

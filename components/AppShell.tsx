@@ -134,7 +134,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-[var(--border)] p-4 space-y-3 shrink-0 bg-[var(--card)] shadow-[0_-10px_10px_-10px_rgba(0,0,0,0.05)]">
+        <div className="border-t border-[var(--border)] p-4 pb-8 md:pb-10 space-y-3 shrink-0 bg-[var(--card)] shadow-[0_-10px_10px_-10px_rgba(0,0,0,0.05)]">
           {!loading && user && (
             <Link href="/profile"
               className={`flex items-center gap-3 px-2 py-2.5 rounded-[1.25rem] hover:bg-[var(--muted)] transition-colors 
@@ -173,7 +173,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setCollapsed(c => !c)}
             className="hidden md:flex w-full items-center justify-center py-2 rounded-xl text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
+          > Collapse
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>

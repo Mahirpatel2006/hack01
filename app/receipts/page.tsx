@@ -97,37 +97,53 @@ export default function ReceiptsPage() {
 
       {/* Create modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="card-base w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
-            <button onClick={() => setShowCreate(false)} className="absolute top-4 right-4 text-[var(--muted-foreground)]"><X className="w-5 h-5"/></button>
-            <h2 className="text-xl font-black mb-6">New Receipt</h2>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-[var(--background)]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="card-base w-full max-w-lg relative max-h-[90vh] overflow-y-auto shadow-2xl">
+            <button onClick={() => setShowCreate(false)} className="absolute top-5 right-5 text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors"><X className="w-5 h-5"/></button>
+            <h2 className="text-2xl font-black mb-6 tracking-tight text-[var(--foreground)]">New Receipt</h2>
+            <div className="space-y-5">
               <Input label="Supplier" value={form.supplier} onChange={e => setForm(f=>({...f, supplier: e.target.value}))} required />
+              
               <div>
                 <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-2">Destination Warehouse</label>
-                <select value={form.warehouseId} onChange={e => setForm(f=>({...f, warehouseId: e.target.value}))} className="input-base w-full">
-                  <option value="">Select…</option>
+                <select value={form.warehouseId} onChange={e => setForm(f=>({...f, warehouseId: e.target.value}))} className="input-base">
+                  <option value="">Select warehouse…</option>
                   {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-2">Products</label>
-                {form.items.map((item, idx) => (
-                  <div key={idx} className="flex gap-2 mb-2">
-                    <select value={item.productId} onChange={e => { const items=[...form.items]; items[idx]={...item, productId:e.target.value}; setForm(f=>({...f,items})) }} className="input-base flex-1">
-                      <option value="">Select product…</option>
-                      {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}
-                    </select>
-                    <input type="number" value={item.quantity} min="1" onChange={e => { const items=[...form.items]; items[idx]={...item, quantity:e.target.value}; setForm(f=>({...f,items})) }} className="input-base w-24" />
-                    {form.items.length > 1 && <button onClick={() => { const items=form.items.filter((_,i)=>i!==idx); setForm(f=>({...f,items})) }} className="p-2 text-[var(--destructive)]"><X className="w-4 h-4"/></button>}
-                  </div>
-                ))}
-                <button onClick={() => setForm(f=>({...f, items:[...f.items,{productId:'',quantity:'1'}]}))} className="text-xs text-[var(--primary)] font-semibold mt-1 hover:underline">+ Add line</button>
+
+              <div className="pt-2">
+                <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-3">Products</label>
+                <div className="space-y-3 bg-[var(--muted)]/30 p-4 rounded-2xl border border-[var(--border)]">
+                  {form.items.map((item, idx) => (
+                    <div key={idx} className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+                      <select value={item.productId} onChange={e => { const items=[...form.items]; items[idx]={...item, productId:e.target.value}; setForm(f=>({...f,items})) }} className="input-base w-full sm:flex-1">
+                        <option value="">Select product…</option>
+                        {products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}
+                      </select>
+                      <div className="flex w-full sm:w-auto items-center gap-2">
+                        <input type="number" value={item.quantity} min="1" onChange={e => { const items=[...form.items]; items[idx]={...item, quantity:e.target.value}; setForm(f=>({...f,items})) }} className="input-base w-full sm:w-24 text-center" placeholder="Qty" />
+                        {form.items.length > 1 && (
+                          <button onClick={() => { const items=form.items.filter((_,i)=>i!==idx); setForm(f=>({...f,items})) }} 
+                            className="p-3 bg-[var(--destructive)]/10 text-[var(--destructive)] rounded-xl hover:bg-[var(--destructive)] hover:text-white transition-colors">
+                            <X className="w-4 h-4"/>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={() => setForm(f=>({...f, items:[...f.items,{productId:'',quantity:'1'}]}))} 
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] hover:text-[var(--primary)]/80 mt-2 py-1 px-2 hover:bg-[var(--primary)]/10 rounded-lg transition-colors">
+                    <Plus className="w-3.5 h-3.5" /> ADD ANOTHER LINE
+                  </button>
+                </div>
               </div>
-              {error && <p className="text-[var(--destructive)] text-sm">{error}</p>}
-              <div className="flex gap-3 pt-2">
-                <Button onClick={handleCreate} loading={saving} className="flex-1"><Check className="w-4 h-4"/> Create Receipt</Button>
-                <Button variant="secondary" onClick={() => setShowCreate(false)}>Cancel</Button>
+
+              {error && <p className="text-[var(--destructive)] text-sm font-semibold">{error}</p>}
+              
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[var(--border)] mt-6">
+                <Button onClick={handleCreate} loading={saving} className="w-full sm:flex-1"><Check className="w-4 h-4"/> Create Receipt</Button>
+                <Button variant="secondary" onClick={() => setShowCreate(false)} className="w-full sm:w-auto">Cancel</Button>
               </div>
             </div>
           </div>
@@ -136,8 +152,8 @@ export default function ReceiptsPage() {
 
       {/* Validate modal */}
       {showValidate && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="card-base w-full max-w-md relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-[var(--background)]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="card-base w-full max-w-md relative max-h-[90vh] overflow-y-auto shadow-2xl">
             <button onClick={() => setShowValidate(null)} className="absolute top-4 right-4 text-[var(--muted-foreground)]"><X className="w-5 h-5"/></button>
             <h2 className="text-xl font-black mb-2">Validate Receipt</h2>
             <p className="text-sm text-[var(--muted-foreground)] mb-6">Enter the actual quantities received.</p>
