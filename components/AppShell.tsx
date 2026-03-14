@@ -54,18 +54,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--background)] flex flex-col md:flex-row">
+    <div className="min-h-screen bg-(--background) flex flex-col md:flex-row">
       {/* Mobile Topbar */}
       <header className="md:hidden flex items-center justify-between h-16 px-4 border-b border-(--border) bg-(--card) sticky top-0 z-30 shadow-sm">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[var(--primary)] flex items-center justify-center shadow-[var(--primary)]/30">
+          <div className="w-8 h-8 rounded-lg bg-(--primary) flex items-center justify-center shadow-(--primary)/30">
             <Zap className="w-4 h-4 text-white fill-current" />
           </div>
           <span className="font-black text-(--foreground)">CoreInventory</span>
         </div>
         <button 
           onClick={() => setMobileOpen(true)}
-          className="p-2 rounded-xl text-[var(--foreground)] hover:bg-[var(--muted)] transition-colors"
+          className="p-2 rounded-xl text-(--foreground) hover:bg-(--muted) transition-colors"
           aria-label="Open menu"
         >
           <Menu className="w-6 h-6" />
@@ -82,16 +82,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed md:sticky top-0 left-0 h-screen z-50 flex flex-col border-r border-[var(--border)]
-          bg-[var(--card)] transition-all duration-300 transform 
+        className={`fixed md:sticky top-0 left-0 h-screen z-50 flex flex-col border-r border-(--border)
+          bg-(--card) transition-all duration-300 transform 
           ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           ${collapsed ? 'md:w-[80px]' : 'md:w-[260px] w-64'}`}
       >
         {/* Mobile close button inside sidebar header */}
-        <div className={`flex items-center gap-3 px-4 h-20 border-b border-[var(--border)] shrink-0 
+        <div className={`flex items-center gap-3 px-4 h-20 border-b border-(--border) shrink-0 
             ${collapsed ? 'md:justify-center' : 'justify-between md:justify-start'}`}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[var(--primary)] flex items-center justify-center shadow-lg shadow-[var(--primary)]/30 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-(--primary) flex items-center justify-center shadow-lg shadow-(--primary)/30 shrink-0">
               <Zap className="w-5 h-5 text-white fill-current" />
             </div>
             {!collapsed && (
@@ -139,7 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-(--border) p-4 space-y-3 shrink-0 bg-(--card) shadow-[0_-10px_10px_-10px_rgba(0,0,0,0.05)]">
+        <div className="border-t border-(--border) p-4 pb-8 md:pb-10 space-y-3 shrink-0 bg-(--card) shadow-[0_-10px_10px_-10px_rgba(0,0,0,0.05)]">
           {!loading && user && (
             <Link href="/profile"
               className={`flex items-center gap-3 px-2 py-2.5 rounded-[1.25rem] hover:bg-(--muted) transition-colors 
@@ -178,7 +178,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setCollapsed(c => !c)}
             className="hidden md:flex w-full items-center justify-center py-2 rounded-xl text-(--muted-foreground) hover:bg-(--muted) hover:text-(--foreground) transition-colors"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
+          > Collapse
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
