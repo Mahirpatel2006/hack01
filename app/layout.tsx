@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider }  from '@/components/ThemeProvider'
-import { Navbar }         from '@/components/Navbar'
+import { AppShell }     from '@/components/AppShell'
 import { ToastProvider }  from '@/components/ui/Toast'
 import { ErrorBoundary }  from '@/components/ui/ErrorBoundary'
 
@@ -26,10 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <ToastProvider>
             <ErrorBoundary>
-              <Navbar />
-              <main className="min-h-screen transition-all duration-300 lg:pl-[240px]">
+              <AppShell>
                 {children}
-              </main>
+              </AppShell>
             </ErrorBoundary>
           </ToastProvider>
         </ThemeProvider>

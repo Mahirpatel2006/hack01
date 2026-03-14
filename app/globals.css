@@ -96,7 +96,7 @@
 
 @utility btn-primary {
   @apply btn-base bg-[var(--primary)] text-[var(--primary-foreground)] 
-         hover:brightness-110 shadow-lg shadow-brand-orange/20;
+         hover:brightness-110 shadow-lg shadow-brand-orange/25;
 }
 
 @utility btn-secondary {
@@ -113,21 +113,21 @@
 }
 
 @utility btn-danger {
-  @apply btn-base bg-[var(--destructive)] text-white hover:brightness-110 shadow-lg shadow-red-500/20;
+  @apply btn-base bg-[var(--destructive)] text-white hover:brightness-110 shadow-lg shadow-red-500/25;
 }
 
 @utility card-base {
   @apply bg-[var(--card)] text-[var(--card-foreground)] 
-         rounded-[2rem] border border-[var(--border)] p-8 shadow-sm transition-all duration-300;
+         rounded-2xl md:rounded-[2rem] border border-[var(--border)] p-5 md:p-8 shadow-sm transition-all duration-300;
 }
 
 @utility input-base {
   @apply w-full bg-[var(--input)] text-[var(--foreground)] 
-         px-5 py-3.5 rounded-2xl border border-[var(--border)]
+         px-5 py-3 md:py-3.5 rounded-xl md:rounded-2xl border border-[var(--border)]
          focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:border-transparent
          transition-all placeholder:text-[var(--muted-foreground)];
 }
 
 @utility badge-base {
-  @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider;
+  @apply inline-flex items-center px-2.5 md:px-3 py-1 bg-[var(--muted)] text-[var(--foreground)] rounded-full text-[10px] md:text-xs font-semibold uppercase tracking-wider;
 }
