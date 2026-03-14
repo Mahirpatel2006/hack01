@@ -53,21 +53,21 @@ export default function ProductPage() {
   const columns: Column<Product>[] = [
     { key:'name',  header:'Product', render: p => (
       <div>
-        <p className="font-semibold text-[var(--foreground)]">{p.name}</p>
-        <p className="text-xs text-[var(--muted-foreground)] font-mono">{p.sku}</p>
+        <p className="font-semibold text-(--foreground)">{p.name}</p>
+        <p className="text-xs text-(--muted-foreground) font-mono">{p.sku}</p>
       </div>
     )},
-    { key:'category', header:'Category', render: p => <span className="text-[var(--muted-foreground)]">{p.category?.name ?? '—'}</span> },
-    { key:'uom', header:'UoM', render: p => <span className="badge-base bg-[var(--muted)] text-[var(--foreground)]">{p.uom}</span> },
+    { key:'category', header:'Category', render: p => <span className="text-(--muted-foreground)">{p.category?.name ?? '—'}</span> },
+    { key:'uom', header:'UoM', render: p => <span className="badge-base bg-(--muted) text-(--foreground)">{p.uom}</span> },
     { key:'stock', header:'Total Stock', render: p => {
       const qty = totalStock(p)
       const low = qty < p.reorder_qty
-      return <span className={`font-bold ${qty === 0 ? 'text-[var(--destructive)]' : low ? 'text-amber-500' : 'text-[var(--success)]'}`}>{qty} {p.uom}</span>
+      return <span className={`font-bold ${qty === 0 ? 'text-(--destructive)' : low ? 'text-amber-500' : 'text-(--success)'}`}>{qty} {p.uom}</span>
     }},
     ...(isManager ? [{ key:'actions', header:'', render: (p: Product) => (
       <div className="flex gap-2 justify-end">
-        <button onClick={() => startEdit(p)} className="p-1.5 rounded-lg hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"><Pencil className="w-4 h-4" /></button>
-        <button onClick={() => deleteProduct(p.id)} className="p-1.5 rounded-lg hover:bg-[var(--destructive)]/10 text-[var(--muted-foreground)] hover:text-[var(--destructive)] transition-colors"><Trash2 className="w-4 h-4" /></button>
+        <button onClick={() => startEdit(p)} className="p-1.5 rounded-lg hover:bg-(--muted) text-(--muted-foreground) hover:text-(--foreground) transition-colors"><Pencil className="w-4 h-4" /></button>
+        <button onClick={() => deleteProduct(p.id)} className="p-1.5 rounded-lg hover:bg-(--destructive)/10 text-(--muted-foreground) hover:text-(--destructive) transition-colors"><Trash2 className="w-4 h-4" /></button>
       </div>
     ), className:'w-20'}] as Column<Product>[] : []),
   ]
@@ -170,7 +170,7 @@ export default function ProductPage() {
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="card-base w-full max-w-lg relative">
-            <button onClick={() => setShowForm(false)} className="absolute top-4 right-4 text-[var(--muted-foreground)] hover:text-[var(--foreground)]"><X className="w-5 h-5" /></button>
+            <button onClick={() => setShowForm(false)} className="absolute top-4 right-4 text-(--muted-foreground) hover:text-(--foreground)"><X className="w-5 h-5" /></button>
             <h2 className="text-xl font-black mb-6">{editId ? 'Edit Product' : 'Add Product'}</h2>
             <div className="space-y-4">
               <Input label="Product Name" value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required />
@@ -180,7 +180,7 @@ export default function ProductPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-2">Category</label>
+                  <label className="block text-xs font-bold text-(--muted-foreground) uppercase tracking-widest mb-2">Category</label>
                   <input list="categories-list" value={form.category} onChange={e => setForm(f => ({...f, category: e.target.value}))}
                     className="input-base w-full" placeholder="e.g. Steel, Hardware" />
                   <datalist id="categories-list">{categories.map(c => <option key={c.id} value={c.name} />)}</datalist>
@@ -191,7 +191,7 @@ export default function ProductPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <Input type="number" label="Initial Stock (optional)" value={form.quantity} onChange={e => setForm(f => ({...f, quantity: e.target.value}))} />
                   <div>
-                    <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-2">Warehouse</label>
+                    <label className="block text-xs font-bold text-(--muted-foreground) uppercase tracking-widest mb-2">Warehouse</label>
                     <select value={form.warehouseId} onChange={e => setForm(f => ({...f, warehouseId: e.target.value}))} className="input-base w-full">
                       <option value="">Select warehouse…</option>
                       {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -199,7 +199,7 @@ export default function ProductPage() {
                   </div>
                 </div>
               )}
-              {error && <p className="text-[var(--destructive)] text-sm font-medium">{error}</p>}
+              {error && <p className="text-(--destructive) text-sm font-medium">{error}</p>}
               <div className="flex gap-3 pt-2">
                 <Button onClick={handleSave} loading={saving} className="flex-1"><Check className="w-4 h-4" /> {editId ? 'Update' : 'Create'} Product</Button>
                 <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>

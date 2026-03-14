@@ -10,6 +10,7 @@ interface ReceiptRow { id: number; status: string; warehouse_id: number; items: 
 const RECEIPT_WITH_JOINS = `
   SELECT r.id, r.supplier, r.status, r.receipt_date, r.created_at, r.updated_at,
          w.id AS warehouse_id, w.name AS warehouse_name,
+         l.id AS location_id, l.name AS location_name,
          COALESCE(json_agg(json_build_object(
            'id',           ri.id,
            'product_id',   ri.product_id,
@@ -19,6 +20,7 @@ const RECEIPT_WITH_JOINS = `
          )) FILTER (WHERE ri.id IS NOT NULL), '[]') AS items
   FROM receipts r
   JOIN warehouses w        ON w.id = r.warehouse_id
+  LEFT JOIN locations l    ON l.id = r.location_id
   LEFT JOIN receipt_items ri ON ri.receipt_id = r.id
   LEFT JOIN products p       ON p.id = ri.product_id
 `
@@ -52,7 +54,7 @@ export async function GET(req: NextRequest) {
     const dataParams = [...params, limit, offset]
     const { rows } = await queryRows(
       `${RECEIPT_WITH_JOINS} ${where}
-       GROUP BY r.id, w.id
+       GROUP BY r.id, w.id, l.id
        ORDER BY r.created_at DESC
        LIMIT $${i++} OFFSET $${i++}`,
       dataParams
@@ -61,6 +63,7 @@ export async function GET(req: NextRequest) {
     const receipts = rows.map(r => ({
       ...r,
       warehouse: { id: r.warehouse_id, name: r.warehouse_name },
+      location: r.location_id ? { id: r.location_id, name: r.location_name } : null
     }))
 
     return NextResponse.json({ receipts, total, page, limit, pages: Math.ceil(total / limit) })
@@ -74,7 +77,7 @@ export async function POST(req: Request) {
     const session = await getSession()
     if (!session) throw Errors.unauthorized()
 
-    const { supplier, warehouseId, receiptDate, items } = await req.json()
+    const { supplier, warehouseId, locationId, receiptDate, items } = await req.json()
     if (!supplier?.trim()) throw Errors.badRequest('Supplier name is required.')
     if (!warehouseId) throw Errors.badRequest('Warehouse is required.')
     if (!items?.length) throw Errors.badRequest('At least one item is required.')
@@ -87,9 +90,9 @@ export async function POST(req: Request) {
 
     const receipt = await withTransaction(async (client) => {
       const { rows: [r] } = await client.query(
-        `INSERT INTO receipts (supplier, warehouse_id, receipt_date, status, created_by)
-         VALUES ($1, $2, $3, 'draft', $4) RETURNING *`,
-        [supplier.trim(), Number(warehouseId), receiptDate ?? new Date().toISOString().split('T')[0], session.sub]
+        `INSERT INTO receipts (supplier, warehouse_id, location_id, receipt_date, status, created_by)
+         VALUES ($1, $2, $3, $4, 'draft', $5) RETURNING *`,
+        [supplier.trim(), Number(warehouseId), locationId ? Number(locationId) : null, receiptDate ?? new Date().toISOString().split('T')[0], session.sub]
       )
       for (const item of items) {
         await client.query(
@@ -116,6 +119,10 @@ export async function PATCH(req: Request) {
     const { receiptId, status, items } = await req.json()
     if (!receiptId) throw Errors.badRequest('Receipt ID is required.')
 
+    const VALID_STATUSES = ['draft', 'waiting', 'ready', 'done', 'canceled', 'validated']
+    if (!VALID_STATUSES.includes(status))
+      throw Errors.badRequest(`Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`)
+
     const { rows: [receipt] } = await queryRows<ReceiptRow>(
       `SELECT r.id, r.status, r.warehouse_id,
          json_agg(json_build_object(
@@ -127,9 +134,13 @@ export async function PATCH(req: Request) {
     )
 
     if (!receipt) throw Errors.notFound('Receipt not found.')
-    if (receipt.status === 'validated') throw Errors.badRequest('Receipt is already validated.')
 
-    if (status === 'validated') {
+    const TERMINAL = ['done', 'validated', 'canceled']
+    if (TERMINAL.includes(receipt.status))
+      throw Errors.badRequest(`Receipt is already ${receipt.status} and cannot be changed.`)
+
+    // Only update stock when the receipt is being marked done/validated
+    if (status === 'validated' || status === 'done') {
       if (!items?.length) throw Errors.badRequest('Received quantities are required for validation.')
 
       await withTransaction(async (client) => {
@@ -156,11 +167,14 @@ export async function PATCH(req: Request) {
             )
           }
         }
-        await client.query(`UPDATE receipts SET status = 'validated' WHERE id = $1`, [receipt.id])
+        await client.query(`UPDATE receipts SET status = $1 WHERE id = $2`, [status, receipt.id])
       })
-      logger.info('receipt PATCH', `Receipt #${receiptId} validated by ${session.sub}`)
+    } else {
+      // Simple status change (draft → waiting → ready | canceled)
+      await queryRows(`UPDATE receipts SET status = $1 WHERE id = $2`, [status, Number(receiptId)])
     }
 
+    logger.info('receipt PATCH', `Receipt #${receiptId} → ${status} by ${session.sub}`)
     return NextResponse.json({ message: 'Receipt updated.' })
   } catch (err) {
     return handleRouteError(err, 'receipt PATCH')

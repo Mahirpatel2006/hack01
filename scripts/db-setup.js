@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     CONSTRAINT users_email_unique UNIQUE (email),
-    CONSTRAINT users_role_check CHECK (role IN ('manager', 'staff'))
+    CONSTRAINT users_role_check CHECK (role IN ('owner', 'manager', 'staff'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email      ON users (LOWER(email));
@@ -39,8 +39,6 @@ RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $$ LANGUAGE
 DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- role column handled separately in setup() below
 
 CREATE TABLE IF NOT EXISTS otp_codes (
     id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,8 +78,30 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS warehouses (
   id         SERIAL PRIMARY KEY,
   name       TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  location   TEXT,
+  deleted_at TIMESTAMPTZ DEFAULT NULL,
+  is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+DROP TRIGGER IF EXISTS trg_warehouses_updated_at ON warehouses;
+CREATE TRIGGER trg_warehouses_updated_at BEFORE UPDATE ON warehouses
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS locations (
+  id           SERIAL PRIMARY KEY,
+  warehouse_id INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+  name         TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_locations_warehouse ON locations(warehouse_id);
+
+DROP TRIGGER IF EXISTS trg_locations_updated_at ON locations;
+CREATE TRIGGER trg_locations_updated_at BEFORE UPDATE ON locations
+FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TABLE IF NOT EXISTS products (
   id          SERIAL PRIMARY KEY,
@@ -90,6 +110,8 @@ CREATE TABLE IF NOT EXISTS products (
   uom         TEXT    NOT NULL,
   category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
   reorder_qty INTEGER NOT NULL DEFAULT 10,
+  deleted_at  TIMESTAMPTZ DEFAULT NULL,
+  is_active   BOOLEAN NOT NULL DEFAULT TRUE,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -116,15 +138,17 @@ CREATE TABLE IF NOT EXISTS receipts (
   id           SERIAL  PRIMARY KEY,
   supplier     TEXT    NOT NULL,
   warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
+  location_id  INTEGER REFERENCES locations(id) ON DELETE SET NULL,
   receipt_date TIMESTAMPTZ DEFAULT NOW(),
   status       TEXT    NOT NULL DEFAULT 'draft'
-                       CHECK (status IN ('draft', 'validated')),
+                       CHECK (status IN ('draft', 'waiting', 'ready', 'done', 'canceled', 'validated')),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_receipts_status    ON receipts(status);
 CREATE INDEX IF NOT EXISTS idx_receipts_warehouse ON receipts(warehouse_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_location  ON receipts(location_id);
 CREATE INDEX IF NOT EXISTS idx_receipts_created   ON receipts(created_at DESC);
 
 DROP TRIGGER IF EXISTS trg_receipts_updated_at ON receipts;
@@ -140,15 +164,18 @@ CREATE TABLE IF NOT EXISTS receipt_items (
 );
 
 CREATE TABLE IF NOT EXISTS deliveries (
-  id         SERIAL PRIMARY KEY,
-  customer   TEXT   NOT NULL,
-  status     TEXT   NOT NULL DEFAULT 'draft'
-                    CHECK (status IN ('draft', 'validated')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id           SERIAL PRIMARY KEY,
+  customer     TEXT   NOT NULL,
+  location_id  INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+  status       TEXT   NOT NULL DEFAULT 'draft'
+                      CHECK (status IN ('draft', 'waiting', 'ready', 'done', 'canceled', 'validated')),
+  created_by   UUID   REFERENCES users(id),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_deliveries_status  ON deliveries(status);
-CREATE INDEX IF NOT EXISTS idx_deliveries_created ON deliveries(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_deliveries_status    ON deliveries(status);
+CREATE INDEX IF NOT EXISTS idx_deliveries_location  ON deliveries(location_id);
+CREATE INDEX IF NOT EXISTS idx_deliveries_created   ON deliveries(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS delivery_items (
   id           SERIAL  PRIMARY KEY,
@@ -162,14 +189,19 @@ CREATE TABLE IF NOT EXISTS transfers (
   id                SERIAL  PRIMARY KEY,
   from_warehouse_id INTEGER NOT NULL REFERENCES warehouses(id),
   to_warehouse_id   INTEGER NOT NULL REFERENCES warehouses(id),
+  from_location_id  INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+  to_location_id    INTEGER REFERENCES locations(id) ON DELETE SET NULL,
   status            TEXT    NOT NULL DEFAULT 'draft'
-                            CHECK (status IN ('draft', 'completed')),
+                            CHECK (status IN ('draft', 'waiting', 'ready', 'done', 'canceled', 'completed')),
+  created_by        UUID    REFERENCES users(id),
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (from_warehouse_id <> to_warehouse_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_transfers_status  ON transfers(status);
+CREATE INDEX IF NOT EXISTS idx_transfers_from_loc ON transfers(from_location_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_to_loc   ON transfers(to_location_id);
 CREATE INDEX IF NOT EXISTS idx_transfers_created ON transfers(created_at DESC);
 
 DROP TRIGGER IF EXISTS trg_transfers_updated_at ON transfers;
@@ -227,7 +259,8 @@ async function setup() {
     await client.query(SQL)
 
     console.log('✅ Auth:      users (+role), otp_codes, sessions')
-    console.log('✅ Inventory: categories, warehouses, products, stocks')
+    console.log('✅ Inventory: categories, warehouses (+location), products, stocks')
+    console.log('✅ Locations: locations (internal zones)')
     console.log('✅ Ops:       receipts, deliveries, transfers, adjustments')
     console.log('✅ Ledger:    stock_moves')
     console.log('✅ Indexes & triggers created')

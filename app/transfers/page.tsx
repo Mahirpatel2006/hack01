@@ -9,19 +9,30 @@ import { FilterBar }      from '@/components/inventory/FilterBar'
 import { PageHeader }     from '@/components/inventory/PageHeader'
 import { Button }         from '@/components/ui/Button'
 
+interface Location { id: number; name: string }
+interface Warehouse { id: number; name: string; locations: Location[] }
 interface TransferItem { id:number; product_id:number; quantity:number; transferred_qty:number; product:{id:number;name:string;sku:string} }
-interface Transfer { id:number; status:string; created_at:string; fromWarehouse:{id:number;name:string}; toWarehouse:{id:number;name:string}; items:TransferItem[] }
+interface Transfer { 
+  id:number; 
+  status:string; 
+  created_at:string; 
+  fromWarehouse:{id:number;name:string}; 
+  toWarehouse:{id:number;name:string}; 
+  fromLocation: {id:number; name:string} | null;
+  toLocation: {id:number; name:string} | null;
+  items:TransferItem[] 
+}
 
 export default function TransfersPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const [transfers, setTransfers]   = useState<Transfer[]>([])
   const [products, setProducts]     = useState<{id:number;name:string;sku:string}[]>([])
-  const [warehouses, setWarehouses] = useState<{id:number;name:string}[]>([])
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [fetching, setFetching]     = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [showComplete, setShowComplete] = useState<Transfer|null>(null)
-  const [form, setForm] = useState({ fromWarehouseId:'', toWarehouseId:'', items:[{productId:'',quantity:'1'}] })
+  const [form, setForm] = useState({ fromWarehouseId:'', toWarehouseId:'', fromLocationId:'', toLocationId:'', items:[{productId:'',quantity:'1'}] })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
@@ -39,26 +50,85 @@ export default function TransfersPage() {
 
   const columns: Column<Transfer>[] = [
     { key:'id',    header:'#',   render: t => `T-${t.id}` },
-    { key:'from',  header:'From', render: t => <p className="font-semibold">{t.fromWarehouse?.name}</p> },
-    { key:'to',    header:'To',   render: t => <p className="font-semibold">{t.toWarehouse?.name}</p> },
+    { 
+      key:'from',  
+      header:'From', 
+      render: t => (
+        <div>
+          <p className="font-semibold text-foreground text-sm">{t.fromWarehouse?.name}</p>
+          {t.fromLocation && <p className="text-[10px] text-muted-foreground font-medium">📍 {t.fromLocation.name}</p>}
+        </div>
+      )
+    },
+    { 
+      key:'to',    
+      header:'To',   
+      render: t => (
+        <div>
+          <p className="font-semibold text-foreground text-sm">{t.toWarehouse?.name}</p>
+          {t.toLocation && <p className="text-[10px] text-muted-foreground font-medium">📍 {t.toLocation.name}</p>}
+        </div>
+      )
+    },
     { key:'items', header:'Items', render: t => `${t.items?.length ?? 0} lines` },
-    { key:'status', header:'Status', render: t => <StatusBadge status={t.status} /> },
-    { key:'created_at', header:'Date', render: t => new Date(t.created_at).toLocaleDateString() },
-    { key:'actions', header:'', render: t => t.status === 'draft' ? (
-      <Button variant="secondary" onClick={e=>{e.stopPropagation();setShowComplete(t);setError('')}} className="text-xs h-8 px-3">
-        <CheckCircle className="w-3.5 h-3.5"/> Complete
-      </Button>
-    ) : <span className="text-xs text-[var(--success)] font-semibold">Completed</span> },
+    { key:'status',   header:'Status',    render: t => <StatusBadge status={t.status} /> },
+    { key:'created_at', header:'Date',   render: t => new Date(t.created_at).toLocaleDateString() },
+    { key:'actions',  header:'', render: t => {
+      const isTerminal = ['done', 'completed', 'canceled'].includes(t.status);
+      if (isTerminal) return <span className="text-xs text-(--success) font-semibold uppercase tracking-wider">{t.status}</span>;
+      
+      return (
+        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+          <select 
+            className="text-[10px] bg-(--muted) border-(--border) rounded-lg px-2 py-1 font-bold uppercase tracking-wider outline-none focus:ring-1 focus:ring-(--primary) transition-all"
+            value={t.status}
+            onChange={(e) => updateStatus(t.id, e.target.value)}
+          >
+            <option value="draft">Draft</option>
+            <option value="waiting">Waiting</option>
+            <option value="ready">Ready</option>
+            <option value="canceled">Cancel</option>
+          </select>
+          <Button variant="secondary" onClick={() => { setShowComplete(t); setError('') }} className="text-[10px] h-7 px-2 font-bold uppercase tracking-widest">
+            <CheckCircle className="w-3 h-3 mr-1" /> Transfer
+          </Button>
+        </div>
+      );
+    }},
   ]
 
   async function handleCreate() {
     setSaving(true); setError('')
     const items = form.items.filter(i=>i.productId&&Number(i.quantity)>0).map(i=>({productId:Number(i.productId),quantity:Number(i.quantity)}))
     if (!form.fromWarehouseId||!form.toWarehouseId||!items.length) { setError('Fill all fields.'); setSaving(false); return }
-    const res = await fetch('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fromWarehouseId:Number(form.fromWarehouseId),toWarehouseId:Number(form.toWarehouseId),items})})
+    const res = await fetch('/api/transfer', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ 
+        fromWarehouseId: Number(form.fromWarehouseId), 
+        toWarehouseId: Number(form.toWarehouseId), 
+        fromLocationId: form.fromLocationId ? Number(form.fromLocationId) : null,
+        toLocationId: form.toLocationId ? Number(form.toLocationId) : null,
+        items 
+      }) 
+    })
     const data = await res.json()
     if (!res.ok) { setError(data.error); setSaving(false); return }
-    setShowCreate(false); setForm({fromWarehouseId:'',toWarehouseId:'',items:[{productId:'',quantity:'1'}]}); load(); setSaving(false)
+    setShowCreate(false); setForm({fromWarehouseId:'',toWarehouseId:'',fromLocationId:'',toLocationId:'',items:[{productId:'',quantity:'1'}]}); load(); setSaving(false)
+  }
+
+  async function updateStatus(id: number, newStatus: string) {
+    setSaving(true); setError('')
+    const res = await fetch('/api/transfer', { 
+      method:'PATCH', 
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ transferId: id, status: newStatus }) 
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      setError(data.error)
+    } else {
+      load()
+    }
+    setSaving(false)
   }
 
   async function handleComplete() {
@@ -97,35 +167,81 @@ export default function TransfersPage() {
         filters={[
           {
             key: 'status', label: 'Status', value: filterStatus, onChange: setFilterStatus,
-            options: [ { label: 'All Statuses', value: '' }, { label: 'Draft', value: 'draft' }, { label: 'Completed', value: 'completed' } ]
+            options: [ 
+              { label: 'All Statuses', value: '' }, 
+              { label: 'Draft', value: 'draft' }, 
+              { label: 'Waiting', value: 'waiting' }, 
+              { label: 'Ready', value: 'ready' }, 
+              { label: 'Done', value: 'done' }, 
+              { label: 'Completed', value: 'completed' },
+              { label: 'Canceled', value: 'canceled' } 
+            ]
           }
         ]}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
       />
       {showCreate && (
-        <div className="fixed inset-0 bg-[var(--background)]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-(--background)/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="card-base w-full max-w-lg relative max-h-[90vh] overflow-y-auto shadow-2xl">
-            <button onClick={()=>setShowCreate(false)} className="absolute top-5 right-5 text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors"><X className="w-5 h-5"/></button>
-            <h2 className="text-2xl font-black mb-6 tracking-tight text-[var(--foreground)]">New Internal Transfer</h2>
+            <button onClick={()=>setShowCreate(false)} className="absolute top-5 right-5 text-(--muted-foreground) hover:text-(--primary) transition-colors"><X className="w-5 h-5"/></button>
+            <h2 className="text-2xl font-black mb-6 tracking-tight text-(--foreground)">New Internal Transfer</h2>
             <div className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-2">From</label>
-                  <select value={form.fromWarehouseId} onChange={e=>setForm(f=>({...f,fromWarehouseId:e.target.value}))} className="input-base">
-                    <option value="">Select…</option>{warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
-                  </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">From Warehouse</label>
+                    <select value={form.fromWarehouseId} 
+                      onChange={e => setForm(f=>({...f, fromWarehouseId: e.target.value, fromLocationId: ''}))} 
+                      className="input-base"
+                    >
+                      <option value="">Select source…</option>
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">From Location</label>
+                    <select value={form.fromLocationId} 
+                      onChange={e => setForm(f=>({...f, fromLocationId: e.target.value}))} 
+                      className="input-base"
+                      disabled={!form.fromWarehouseId}
+                    >
+                      <option value="">Select location…</option>
+                      {warehouses.find(w => String(w.id) === form.fromWarehouseId)?.locations?.map(l => (
+                        <option key={l.id} value={l.id}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-2">To</label>
-                  <select value={form.toWarehouseId} onChange={e=>setForm(f=>({...f,toWarehouseId:e.target.value}))} className="input-base">
-                    <option value="">Select…</option>{warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
-                  </select>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">To Warehouse</label>
+                    <select value={form.toWarehouseId} 
+                      onChange={e => setForm(f=>({...f, toWarehouseId: e.target.value, toLocationId: ''}))} 
+                      className="input-base"
+                    >
+                      <option value="">Select dest…</option>
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">To Location</label>
+                    <select value={form.toLocationId} 
+                      onChange={e => setForm(f=>({...f, toLocationId: e.target.value}))} 
+                      className="input-base"
+                      disabled={!form.toWarehouseId}
+                    >
+                      <option value="">Select location…</option>
+                      {warehouses.find(w => String(w.id) === form.toWarehouseId)?.locations?.map(l => (
+                        <option key={l.id} value={l.id}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
               
               <div className="pt-2">
-                <label className="block text-xs font-bold text-[var(--muted-foreground)] uppercase tracking-widest mb-3">Products</label>
+                <label className="block text-xs font-bold text-(--muted-foreground) uppercase tracking-widest mb-3">Products</label>
                 <div className="space-y-3 bg-[var(--muted)]/30 p-4 rounded-2xl border border-[var(--border)]">
                   {form.items.map((item,idx) => (
                     <div key={idx} className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
@@ -136,7 +252,7 @@ export default function TransfersPage() {
                         <input type="number" value={item.quantity} min="1" onChange={e=>{const it=[...form.items];it[idx]={...item,quantity:e.target.value};setForm(f=>({...f,items:it}))}} className="input-base w-full sm:w-24 text-center" placeholder="Qty" />
                         {form.items.length > 1 && (
                           <button onClick={()=>setForm(f=>({...f,items:f.items.filter((_,i)=>i!==idx)}))} 
-                            className="p-3 bg-[var(--destructive)]/10 text-[var(--destructive)] rounded-xl hover:bg-[var(--destructive)] hover:text-white transition-colors">
+                            className="p-3 bg-[var(--destructive)]/10 text-(--destructive) rounded-xl hover:bg-[var(--destructive)] hover:text-white transition-colors">
                             <X className="w-4 h-4"/>
                           </button>
                         )}
@@ -144,13 +260,13 @@ export default function TransfersPage() {
                     </div>
                   ))}
                   <button onClick={()=>setForm(f=>({...f,items:[...f.items,{productId:'',quantity:'1'}]}))} 
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] hover:text-[var(--primary)]/80 mt-2 py-1 px-2 hover:bg-[var(--primary)]/10 rounded-lg transition-colors">
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-(--primary) hover:text-(--primary)/80 mt-2 py-1 px-2 hover:bg-[var(--primary)]/10 rounded-lg transition-colors">
                     <Plus className="w-3.5 h-3.5" /> ADD ANOTHER LINE
                   </button>
                 </div>
               </div>
 
-              {error&&<p className="text-[var(--destructive)] text-sm font-semibold">{error}</p>}
+              {error&&<p className="text-(--destructive) text-sm font-semibold">{error}</p>}
               
               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-[var(--border)] mt-6">
                 <Button onClick={handleCreate} loading={saving} className="w-full sm:flex-1"><Check className="w-4 h-4"/> Create Transfer</Button>
@@ -161,24 +277,24 @@ export default function TransfersPage() {
         </div>
       )}
       {showComplete && (
-        <div className="fixed inset-0 bg-[var(--background)]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-(--background)/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="card-base w-full max-w-md relative shadow-2xl">
-            <button onClick={()=>setShowComplete(null)} className="absolute top-5 right-5 text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors"><X className="w-5 h-5"/></button>
-            <h2 className="text-2xl font-black mb-2 tracking-tight text-[var(--foreground)]">Complete Transfer</h2>
-            <p className="text-sm text-[var(--muted-foreground)] mb-6 bg-[var(--muted)]/50 p-3 rounded-lg border border-[var(--border)] gap-2 flex items-center justify-center">
-              <strong className="text-[var(--foreground)]">{showComplete.fromWarehouse?.name}</strong> 
-              <span className="text-[var(--primary)]">→</span> 
-              <strong className="text-[var(--foreground)]">{showComplete.toWarehouse?.name}</strong>
+            <button onClick={()=>setShowComplete(null)} className="absolute top-5 right-5 text-(--muted-foreground) hover:text-(--primary) transition-colors"><X className="w-5 h-5"/></button>
+            <h2 className="text-2xl font-black mb-2 tracking-tight text-(--foreground)">Complete Transfer</h2>
+            <p className="text-sm text-(--muted-foreground) mb-6 bg-[var(--muted)]/50 p-3 rounded-lg border border-[var(--border)] gap-2 flex items-center justify-center">
+              <strong className="text-(--foreground)">{showComplete.fromWarehouse?.name}</strong> 
+              <span className="text-(--primary)">→</span> 
+              <strong className="text-(--foreground)">{showComplete.toWarehouse?.name}</strong>
             </p>
             <div className="space-y-2 mb-6 max-h-[40vh] overflow-y-auto pr-2">
               {showComplete.items?.map(i=>(
                 <div key={i.id} className="flex justify-between items-center text-sm py-3 px-4 bg-[var(--muted)]/30 rounded-xl border border-[var(--border)]">
-                  <span className="font-semibold text-[var(--foreground)]">{i.product?.name}</span>
-                  <span className="font-mono font-bold text-[var(--muted-foreground)] bg-[var(--background)] px-2 py-1 rounded-md">{i.quantity} units</span>
+                  <span className="font-semibold text-(--foreground)">{i.product?.name}</span>
+                  <span className="font-mono font-bold text-(--muted-foreground) bg-[var(--background)] px-2 py-1 rounded-md">{i.quantity} units</span>
                 </div>
               ))}
             </div>
-            {error&&<p className="text-[var(--destructive)] text-sm font-semibold mb-3">{error}</p>}
+            {error&&<p className="text-(--destructive) text-sm font-semibold mb-3">{error}</p>}
             <div className="flex flex-col sm:flex-row gap-3">
               <Button onClick={handleComplete} loading={saving} className="w-full sm:flex-1"><CheckCircle className="w-4 h-4"/> Move Stock</Button>
               <Button variant="secondary" onClick={()=>setShowComplete(null)} className="w-full sm:w-auto">Cancel</Button>

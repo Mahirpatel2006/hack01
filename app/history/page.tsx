@@ -23,7 +23,7 @@ const TYPE_COLOR: Record<string, string> = {
   delivery:     'text-violet-500 bg-violet-500/10',
   transfer_out: 'text-amber-500 bg-amber-500/10',
   transfer_in:  'text-teal-500 bg-teal-500/10',
-  adjustment:   'text-[var(--primary)] bg-[var(--primary)]/10',
+  adjustment:   'text-(--primary) bg-(--primary)/10',
 }
 
 export default function HistoryPage() {
@@ -55,14 +55,14 @@ export default function HistoryPage() {
         {m.move_type.replace('_', ' ')}
       </span>
     )},
-    { key:'product',   header:'Product',   render: m => <div><p className="font-semibold">{m.product?.name}</p><p className="text-xs font-mono text-[var(--muted-foreground)]">{m.product?.sku}</p></div> },
+    { key:'product',   header:'Product',   render: m => <div><p className="font-semibold">{m.product?.name}</p><p className="text-xs font-mono text-(--muted-foreground)">{m.product?.sku}</p></div> },
     { key:'warehouse', header:'Warehouse', render: m => m.warehouse?.name },
     { key:'delta',     header:'Δ Qty',     render: m => (
-      <span className={`font-bold font-mono ${m.delta > 0 ? 'text-[var(--success)]' : m.delta < 0 ? 'text-[var(--destructive)]' : 'text-[var(--muted-foreground)]'}`}>
+      <span className={`font-bold font-mono ${m.delta > 0 ? 'text-(--success)' : m.delta < 0 ? 'text-(--destructive)' : 'text-(--muted-foreground)'}`}>
         {m.delta > 0 ? '+' : ''}{m.delta}
       </span>
     )},
-    { key:'ref_id',    header:'Ref',       render: m => <span className="text-xs text-[var(--muted-foreground)] font-mono">#{m.ref_id}</span> },
+    { key:'ref_id',    header:'Ref',       render: m => <span className="text-xs text-(--muted-foreground) font-mono">#{m.ref_id}</span> },
     { key:'created_at',header:'Date',      render: m => new Date(m.created_at).toLocaleString() },
   ]
 
@@ -110,7 +110,7 @@ export default function HistoryPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-4 mt-6">
           <Button variant="secondary" disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← Previous</Button>
-          <span className="text-sm font-semibold text-[var(--muted-foreground)]">Page {page} of {totalPages}</span>
+          <span className="text-sm font-semibold text-(--muted-foreground)">Page {page} of {totalPages}</span>
           <Button variant="secondary" disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)}>Next →</Button>
         </div>
       )}

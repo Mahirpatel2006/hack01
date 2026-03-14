@@ -17,6 +17,8 @@ const TRANSFER_WITH_JOINS = `
   SELECT t.id, t.status, t.created_at, t.updated_at,
          fw.id AS from_id, fw.name AS from_name,
          tw.id AS to_id,   tw.name AS to_name,
+         fl.id AS from_loc_id, fl.name AS from_loc_name,
+         tl.id AS to_loc_id,   tl.name AS to_loc_name,
          COALESCE(json_agg(json_build_object(
            'id',              ti.id,
            'product_id',      ti.product_id,
@@ -27,6 +29,8 @@ const TRANSFER_WITH_JOINS = `
   FROM transfers t
   JOIN warehouses fw ON fw.id = t.from_warehouse_id
   JOIN warehouses tw ON tw.id = t.to_warehouse_id
+  LEFT JOIN locations fl      ON fl.id = t.from_location_id
+  LEFT JOIN locations tl      ON tl.id = t.to_location_id
   LEFT JOIN transfer_items ti ON ti.transfer_id = t.id
   LEFT JOIN products p        ON p.id = ti.product_id
 `
@@ -54,7 +58,7 @@ export async function GET(req: NextRequest) {
     const dataParams = status ? [status, limit, offset] : [limit, offset]
     const { rows } = await queryRows(
       `${TRANSFER_WITH_JOINS} ${where}
-       GROUP BY t.id, fw.id, tw.id
+       GROUP BY t.id, fw.id, tw.id, fl.id, tl.id
        ORDER BY t.created_at DESC
        LIMIT $${iStart} OFFSET $${iStart + 1}`,
       dataParams
@@ -64,6 +68,8 @@ export async function GET(req: NextRequest) {
       ...r,
       fromWarehouse: { id: r.from_id, name: r.from_name },
       toWarehouse:   { id: r.to_id,   name: r.to_name   },
+      fromLocation:  r.from_loc_id ? { id: r.from_loc_id, name: r.from_loc_name } : null,
+      toLocation:    r.to_loc_id   ? { id: r.to_loc_id,   name: r.to_loc_name   } : null,
     }))
 
     return NextResponse.json({ transfers, total, page, limit, pages: Math.ceil(total / limit) })
@@ -77,7 +83,7 @@ export async function POST(req: Request) {
     const session = await getSession()
     if (!session) throw Errors.unauthorized()
 
-    const { fromWarehouseId, toWarehouseId, items } = await req.json()
+    const { fromWarehouseId, toWarehouseId, fromLocationId, toLocationId, items } = await req.json()
     if (!fromWarehouseId || !toWarehouseId) throw Errors.badRequest('Both warehouses are required.')
     if (!items?.length)                     throw Errors.badRequest('At least one item is required.')
     if (Number(fromWarehouseId) === Number(toWarehouseId))
@@ -91,9 +97,9 @@ export async function POST(req: Request) {
 
     const transfer = await withTransaction(async (client) => {
       const { rows: [t] } = await client.query(
-        `INSERT INTO transfers (from_warehouse_id, to_warehouse_id, status, created_by)
-         VALUES ($1, $2, 'draft', $3) RETURNING *`,
-        [Number(fromWarehouseId), Number(toWarehouseId), session.sub]
+        `INSERT INTO transfers (from_warehouse_id, to_warehouse_id, from_location_id, to_location_id, status, created_by)
+         VALUES ($1, $2, $3, $4, 'draft', $5) RETURNING *`,
+        [Number(fromWarehouseId), Number(toWarehouseId), fromLocationId ? Number(fromLocationId) : null, toLocationId ? Number(toLocationId) : null, session.sub]
       )
       for (const item of items) {
         await client.query(
@@ -117,53 +123,64 @@ export async function PATCH(req: Request) {
     const session = await getSession()
     if (!session) throw Errors.unauthorized()
 
-    const { transferId, status } = await req.json()
-    if (!transferId || status !== 'completed')
-      throw Errors.badRequest('transferId and status=completed are required.')
+    const { transferId, status: rawStatus } = await req.json()
+    const status = String(rawStatus ?? '')
+    if (!transferId) throw Errors.badRequest('Transfer ID is required.')
 
-    const { rows: [t] } = await queryRows(`SELECT * FROM transfers WHERE id = $1`, [Number(transferId)])
-    if (!t)                       throw Errors.notFound('Transfer not found.')
-    if (t.status === 'completed') throw Errors.badRequest('Transfer is already completed.')
+    const VALID_STATUSES = ['draft', 'waiting', 'ready', 'done', 'canceled', 'completed']
+    if (!VALID_STATUSES.includes(status))
+      throw Errors.badRequest(`Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`)
 
-    const { rows: items } = await queryRows<TransferItemRow>(
-      `SELECT * FROM transfer_items WHERE transfer_id = $1`, [Number(transferId)]
-    )
+    const { rows: [t] } = await queryRows<{ status: string; id: number; from_warehouse_id: number; to_warehouse_id: number }>(`SELECT id, status, from_warehouse_id, to_warehouse_id FROM transfers WHERE id = $1`, [Number(transferId)])
+    if (!t) throw Errors.notFound('Transfer not found.')
 
-    await withTransaction(async (client) => {
-      for (const item of items) {
-        const { rows: [src] } = await client.query(
-          `SELECT quantity FROM stocks WHERE product_id = $1 AND warehouse_id = $2 FOR UPDATE`,
-          [item.product_id, (t as { from_warehouse_id: number }).from_warehouse_id]
-        )
-        if (!src || (src as { quantity: number }).quantity < item.quantity) {
-          throw new Error(`Insufficient stock for product ID ${item.product_id} in source warehouse.`)
+    const TERMINAL = ['done', 'completed', 'canceled']
+    if (TERMINAL.includes(t.status))
+      throw Errors.badRequest(`Transfer is already ${t.status} and cannot be changed.`)
+
+    if (status === 'completed' || status === 'done') {
+      const { rows: items } = await queryRows<TransferItemRow>(
+        `SELECT * FROM transfer_items WHERE transfer_id = $1`, [Number(transferId)]
+      )
+
+      await withTransaction(async (client) => {
+        for (const item of items) {
+          const { rows: [src] } = await client.query(
+            `SELECT quantity FROM stocks WHERE product_id = $1 AND warehouse_id = $2 FOR UPDATE`,
+            [item.product_id, (t as { from_warehouse_id: number }).from_warehouse_id]
+          )
+          if (!src || (src as { quantity: number }).quantity < item.quantity) {
+            throw new Error(`Insufficient stock for product ID ${item.product_id} in source warehouse.`)
+          }
+
+          await client.query(
+            `UPDATE stocks SET quantity = quantity - $1 WHERE product_id = $2 AND warehouse_id = $3`,
+            [item.quantity, item.product_id, t.from_warehouse_id]
+          )
+          await client.query(
+            `INSERT INTO stocks (product_id, warehouse_id, quantity) VALUES ($1, $2, $3)
+             ON CONFLICT (product_id, warehouse_id) DO UPDATE SET quantity = stocks.quantity + $3`,
+            [item.product_id, t.to_warehouse_id, item.quantity]
+          )
+          await client.query(
+            `INSERT INTO stock_moves (move_type, ref_id, product_id, warehouse_id, delta) VALUES
+             ('transfer_out', $1, $2, $3, $4),
+             ('transfer_in',  $1, $2, $5, $4)`,
+            [t.id, item.product_id, t.from_warehouse_id, item.quantity, t.to_warehouse_id]
+          )
+          await client.query(
+            `UPDATE transfer_items SET transferred_qty = $1 WHERE id = $2`,
+            [item.quantity, item.id]
+          )
         }
+        await client.query(`UPDATE transfers SET status = $1 WHERE id = $2`, [status, t.id])
+      })
+    } else {
+      await queryRows(`UPDATE transfers SET status = $1 WHERE id = $2`, [status, Number(transferId)])
+    }
 
-        await client.query(
-          `UPDATE stocks SET quantity = quantity - $1 WHERE product_id = $2 AND warehouse_id = $3`,
-          [item.quantity, item.product_id, t.from_warehouse_id]
-        )
-        await client.query(
-          `INSERT INTO stocks (product_id, warehouse_id, quantity) VALUES ($1, $2, $3)
-           ON CONFLICT (product_id, warehouse_id) DO UPDATE SET quantity = stocks.quantity + $3`,
-          [item.product_id, t.to_warehouse_id, item.quantity]
-        )
-        await client.query(
-          `INSERT INTO stock_moves (move_type, ref_id, product_id, warehouse_id, delta) VALUES
-           ('transfer_out', $1, $2, $3, $4),
-           ('transfer_in',  $1, $2, $5, $4)`,
-          [t.id, item.product_id, t.from_warehouse_id, item.quantity, t.to_warehouse_id]
-        )
-        await client.query(
-          `UPDATE transfer_items SET transferred_qty = $1 WHERE id = $2`,
-          [item.quantity, item.id]
-        )
-      }
-      await client.query(`UPDATE transfers SET status = 'completed' WHERE id = $1`, [t.id])
-    })
-
-    logger.info('transfer PATCH', `Transfer #${transferId} completed by ${session.sub}`)
-    return NextResponse.json({ message: 'Transfer completed. Stock moved.' })
+    logger.info('transfer PATCH', `Transfer #${transferId} → ${status} by ${session.sub}`)
+    return NextResponse.json({ message: 'Transfer updated.' })
   } catch (err) {
     return handleRouteError(err, 'transfer PATCH')
   }

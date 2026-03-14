@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/db-setup.js && node scripts/db-migrate.js && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
