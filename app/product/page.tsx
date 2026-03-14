@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Pencil, X, Check } from 'lucide-react'
 import { useAuth }        from '@/hooks/useAuth'
 import { DataTable, type Column } from '@/components/inventory/DataTable'
+import { FilterBar }      from '@/components/inventory/FilterBar'
 import { PageHeader }     from '@/components/inventory/PageHeader'
 import { Button }         from '@/components/ui/Button'
 import { Input }          from '@/components/ui/Input'
@@ -24,6 +25,11 @@ export default function ProductPage() {
   const [form, setForm] = useState({ name:'', sku:'', uom:'', category:'', reorder_qty:'10', quantity:'', warehouseId:'' })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+
+  // Filters
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterStock, setFilterStock] = useState('')
 
   useEffect(() => { if (!loading && !user) router.push('/login') }, [user, loading, router])
   useEffect(() => { if (!loading && user && !isManager) router.push('/access-denied') }, [user, loading, isManager, router])
@@ -95,6 +101,28 @@ export default function ProductPage() {
 
   if (loading || !user) return null
 
+  // Apply filters
+  const filteredProducts = products.filter(p => {
+    let matches = true
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      matches = matches && (p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
+    }
+    if (filterCategory) {
+      matches = matches && p.category?.name === filterCategory
+    }
+    if (filterStock) {
+      const qty = totalStock(p)
+      if (filterStock === 'out') matches = matches && qty === 0
+      if (filterStock === 'low') matches = matches && qty > 0 && qty < p.reorder_qty
+      if (filterStock === 'ok')  matches = matches && qty >= p.reorder_qty
+    }
+    return matches
+  })
+
+  const hasActiveFilters = Boolean(searchQuery || filterCategory || filterStock)
+  const clearFilters = () => { setSearchQuery(''); setFilterCategory(''); setFilterStock('') }
+
   return (
     <div className="p-6 md:p-8">
       <PageHeader
@@ -105,6 +133,38 @@ export default function ProductPage() {
             <Plus className="w-4 h-4" /> Add Product
           </Button>
         )}
+      />
+
+      <FilterBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search products by name or SKU..."
+        filters={[
+          {
+            key: 'category',
+            label: 'Category',
+            value: filterCategory,
+            onChange: setFilterCategory,
+            options: [
+              { label: 'All Categories', value: '' },
+              ...categories.map(c => ({ label: c.name, value: c.name }))
+            ]
+          },
+          {
+            key: 'stock',
+            label: 'Stock Status',
+            value: filterStock,
+            onChange: setFilterStock,
+            options: [
+              { label: 'All Statuses', value: '' },
+              { label: 'In Stock', value: 'ok' },
+              { label: 'Low Stock', value: 'low' },
+              { label: 'Out of Stock', value: 'out' }
+            ]
+          }
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
       />
 
       {showForm && (
@@ -149,7 +209,7 @@ export default function ProductPage() {
         </div>
       )}
 
-      <DataTable columns={columns} rows={products} loading={fetching} keyExtractor={p => p.id} emptyMessage="No products yet. Add your first product." />
+      <DataTable columns={columns} rows={filteredProducts} loading={fetching} keyExtractor={p => p.id} emptyMessage="No products match your filters." />
     </div>
   )
 }

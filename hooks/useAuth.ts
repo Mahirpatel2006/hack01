@@ -13,6 +13,7 @@ interface AuthUser {
 interface UseAuthReturn {
   user: AuthUser | null
   loading: boolean
+  isOwner: boolean
   isManager: boolean
   isStaff: boolean
   isAuthenticated: boolean
@@ -37,7 +38,8 @@ export function useAuth(): UseAuthReturn {
   return {
     user,
     loading,
-    isManager: user?.role === 'manager',
+    isOwner:  user?.role === 'owner',
+    isManager: user?.role === 'manager' || user?.role === 'owner',
     isStaff: user?.role === 'staff',
     isAuthenticated: !!user,
   }

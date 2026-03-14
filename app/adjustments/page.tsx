@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, X, Check } from 'lucide-react'
 import { useAuth }       from '@/hooks/useAuth'
 import { DataTable, type Column } from '@/components/inventory/DataTable'
+import { FilterBar }     from '@/components/inventory/FilterBar'
 import { PageHeader }    from '@/components/inventory/PageHeader'
 import { Button }        from '@/components/ui/Button'
 import { Input }         from '@/components/ui/Input'
@@ -22,6 +23,9 @@ export default function AdjustmentsPage() {
   const [currentStock, setCurrentStock] = useState<number|null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterWarehouse, setFilterWarehouse] = useState('')
 
   useEffect(() => { if (!loading && !user) router.push('/login') }, [user, loading, router])
   const load = () => {
@@ -57,10 +61,37 @@ export default function AdjustmentsPage() {
   ]
 
   if (loading || !user) return null
+
+  const filteredAdjustments = adjustments.filter(a => {
+    let matches = true
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase()
+      matches = matches && (a.product?.name.toLowerCase().includes(q) || a.product?.sku.toLowerCase().includes(q))
+    }
+    if (filterWarehouse) matches = matches && a.warehouse?.id.toString() === filterWarehouse
+    return matches
+  })
+  const hasActiveFilters = Boolean(searchQuery || filterWarehouse)
+  const clearFilters = () => { setSearchQuery(''); setFilterWarehouse('') }
+
   return (
     <div className="p-6 md:p-8">
       <PageHeader title="Stock Adjustments" subtitle="Fix discrepancies between recorded and physical stock."
         action={<Button onClick={()=>setShowForm(true)}><Plus className="w-4 h-4"/> New Adjustment</Button>}
+      />
+
+      <FilterBar
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchPlaceholder="Search product by name or SKU..."
+        filters={[
+          {
+            key: 'warehouse', label: 'Warehouse', value: filterWarehouse, onChange: setFilterWarehouse,
+            options: [ { label: 'All Warehouses', value: '' }, ...warehouses.map(w => ({ label: w.name, value: String(w.id) })) ]
+          }
+        ]}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
       />
       {showForm && (
         <div className="fixed inset-0 bg-[var(--background)]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -96,7 +127,7 @@ export default function AdjustmentsPage() {
           </div>
         </div>
       )}
-      <DataTable columns={columns} rows={adjustments} loading={fetching} keyExtractor={a=>a.id} emptyMessage="No adjustments recorded." />
+      <DataTable columns={columns} rows={filteredAdjustments} loading={fetching} keyExtractor={a=>a.id} emptyMessage="No adjustments match your filters." />
     </div>
   )
 }
